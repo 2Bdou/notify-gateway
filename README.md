@@ -14,6 +14,7 @@
 - 任务写入 D1，后台可按项目、发送状态、时间筛选，并下载 CSV
 - IP 60 次/分钟、项目 120 次/分钟限流；正文不超过 5000 字
 - 邮件和 Telegram 失败自动重试 3 次
+- 后台「设置」页配置整站 SMTP / Telegram，改完立即生效
 - 本地没配 SMTP / Bot 时走 mock，接口和后台仍可完整演示
 
 ## 本地运行
@@ -24,7 +25,7 @@ cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-打开 http://127.0.0.1:43147/setup 创建管理员，然后新建项目，复制 Key。
+打开 http://127.0.0.1:43147/setup 创建管理员。需要真发信时，到后台 **设置** 填写 SMTP / Telegram，不必改 `.dev.vars`。然后新建项目，复制 Key。
 
 ```bash
 export NOTIFY_URL=http://127.0.0.1:43147/api/notify
@@ -48,24 +49,19 @@ npm test
 npx wrangler d1 execute notify-tasks --remote --file=./schema.sql
 ```
 
-4. 配置 Secrets（不要写进仓库）：
+4. 只配置登录与 Key 的根密钥（不要写进仓库）：
 
 ```bash
 npx wrangler secret put JWT_SECRET
 npx wrangler secret put KEY_HMAC_SECRET
-npx wrangler secret put SMTP_HOST
-npx wrangler secret put SMTP_PORT
-npx wrangler secret put SMTP_USER
-npx wrangler secret put SMTP_PASSWORD
-npx wrangler secret put SMTP_FROM
-npx wrangler secret put SMTP_TO
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put TELEGRAM_CHAT_ID
 npx wrangler deploy
 ```
 
+SMTP 和 Telegram **不要**再 `secret put`。部署后打开后台 **设置** 填写，点「发送测试」即可。若你以前写过这些 Secret，没填设置页时仍会作为回退。
+
 5. 打开 `https://<worker>/setup` 创建管理员
-6. 后台新建项目，把 Key 配到续期仓库：
+6. 打开 **设置** 配置 SMTP / Telegram
+7. 后台新建项目，把 Key 配到续期仓库：
 
 ```text
 NOTIFY_URL=https://notify.example.com/api/notify
@@ -113,7 +109,10 @@ Authorization: Bearer <项目独立密钥>
 | `/api/tasks` | GET | 任务列表 |
 | `/api/tasks/:id` | GET | 任务详情 |
 | `/api/tasks/export` | GET | 发送日志 CSV |
-| `/health` | GET | KV / D1 / 通道配置 |
+| `/api/settings` | GET / PUT | 通道设置（密码只回显掩码） |
+| `/api/settings/test-email` | POST | 试发邮件 |
+| `/api/settings/test-telegram` | POST | 试发 Telegram |
+| `/health` | GET | KV / D1 / 通道是否已配齐 |
 
 ## 存储
 
@@ -125,5 +124,6 @@ KV
 | `project:{id}` | 项目 JSON |
 | `project_key:{keyHash}` | Key → 项目 ID |
 | `ratelimit:*` | 限流计数 |
+| `settings:channels` | 后台配置的 SMTP / Telegram |
 
 D1 表：`admins`、`projects`、`tasks`。项目删除是软删，任务历史保留，对应 Key 映射立即失效。

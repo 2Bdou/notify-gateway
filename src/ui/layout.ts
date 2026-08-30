@@ -14,6 +14,7 @@ export function layout(opts: {
           ${navLink("/dashboard", "总览", opts.active)}
           ${navLink("/projects", "项目", opts.active)}
           ${navLink("/tasks", "任务", opts.active)}
+          ${navLink("/settings", "设置", opts.active)}
         </nav>
         <div class="who">
           <div>${esc(opts.email)}</div>
@@ -123,6 +124,13 @@ td { padding: 12px 8px; border-bottom: 1px solid #1d2540; vertical-align: top; }
 .filters { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 16px; }
 .chk { display:flex; align-items:center; gap:8px; color:var(--text); font-size:14px; }
 .chk input { width:auto; }
+.settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.hint { color:var(--muted); font-size:13px; margin:0 0 14px; }
+.okflash { background:#123528; border:1px solid #2a6b4a; color:var(--ok); padding:10px 12px; border-radius:10px; margin-bottom:14px; }
+.badflash { background:#3a1020; border:1px solid #6b2a3d; color:#ff8aa8; padding:10px 12px; border-radius:10px; margin-bottom:14px; }
+@media (max-width: 900px) {
+  .settings-grid { grid-template-columns:1fr; }
+}
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
   .side { border-right: 0; border-bottom: 1px solid var(--line); }

@@ -1,4 +1,5 @@
 import { maskKey } from "../projects";
+import type { PublicSettings } from "../settings";
 import type { Project, TaskRecord } from "../types";
 import { attr, esc } from "./escape";
 import { layout } from "./layout";
@@ -247,6 +248,65 @@ export function taskDetailPage(
             ? `<table><thead><tr><th>账号</th><th>ID</th><th>状态</th><th>说明</th></tr></thead><tbody>${details}</tbody></table>`
             : `<div class="empty">这次上报没有账号明细。</div>`
         }
+      </div>`,
+  });
+}
+
+export function settingsPage(
+  email: string,
+  settings: PublicSettings,
+  flash?: { kind: "ok" | "err"; text: string },
+): string {
+  const banner = flash
+    ? `<div class="${flash.kind === "ok" ? "okflash" : "badflash"}">${esc(flash.text)}</div>`
+    : "";
+  return layout({
+    title: "设置",
+    email,
+    active: "/settings",
+    body: `
+      <h1>系统设置</h1>
+      <p class="sub">整站一份 SMTP 和 Telegram。项目页只控制开不开通道，上报接口不能指定收件人。JWT / HMAC 密钥仍在 Cloudflare Secret。</p>
+      ${banner}
+      <div class="settings-grid">
+        <div class="card">
+          <strong>邮件 SMTP</strong>
+          <p class="hint">${settings.smtpReady ? "已配置，上报会真发邮件。" : "未配齐 Host / 用户 / 密码时走 mock。"} 只发到 To，请求方改不了。</p>
+          <form method="post" action="/api/settings">
+            <div class="field"><label>Host</label><input name="smtp_host" value="${attr(settings.smtp.host)}" placeholder="smtp.example.com" autocomplete="off"></div>
+            <div class="field"><label>Port</label>
+              <select name="smtp_port">
+                ${["587", "465", "25", "2525"].map((p) => `<option value="${p}" ${settings.smtp.port === p ? "selected" : ""}>${p}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field"><label>用户名</label><input name="smtp_user" value="${attr(settings.smtp.user)}" autocomplete="off"></div>
+            <div class="field"><label>密码 ${settings.smtp.passwordSet ? `<span class="mono">已保存 ${esc(settings.smtp.password)}</span>` : ""}</label>
+              <input name="smtp_password" type="password" autocomplete="new-password" placeholder="${settings.smtp.passwordSet ? "留空则不修改" : "SMTP 密码"}">
+            </div>
+            <div class="field"><label>From</label><input name="smtp_from" value="${attr(settings.smtp.from)}" placeholder="Notify Gateway <notify@example.com>"></div>
+            <div class="field"><label>To（固定收件人）</label><input name="smtp_to" type="email" value="${attr(settings.smtp.to)}" placeholder="you@example.com"></div>
+            <label class="chk" style="margin-bottom:14px"><input type="checkbox" name="clear_smtp_password" value="1"> 清除已保存的密码</label>
+            <div class="row">
+              <button type="submit">保存邮件设置</button>
+              <button class="ghost" type="submit" formaction="/api/settings/test-email">发送测试邮件</button>
+            </div>
+          </form>
+        </div>
+        <div class="card">
+          <strong>Telegram</strong>
+          <p class="hint">${settings.telegramReady ? "已配置，上报会真发 Telegram。" : "未配齐 Token / Chat ID 时走 mock。"}</p>
+          <form method="post" action="/api/settings">
+            <div class="field"><label>Bot Token ${settings.telegram.tokenSet ? `<span class="mono">已保存 ${esc(settings.telegram.botToken)}</span>` : ""}</label>
+              <input name="telegram_bot_token" type="password" autocomplete="new-password" placeholder="${settings.telegram.tokenSet ? "留空则不修改" : "123456:AA..."}">
+            </div>
+            <div class="field"><label>Chat ID</label><input name="telegram_chat_id" value="${attr(settings.telegram.chatId)}" placeholder="123456789"></div>
+            <label class="chk" style="margin-bottom:14px"><input type="checkbox" name="clear_telegram_token" value="1"> 清除已保存的 Token</label>
+            <div class="row">
+              <button type="submit">保存 Telegram 设置</button>
+              <button class="ghost" type="submit" formaction="/api/settings/test-telegram">发送测试消息</button>
+            </div>
+          </form>
+        </div>
       </div>`,
   });
 }

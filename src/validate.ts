@@ -152,6 +152,34 @@ export function sanitizeEmail(email: string): string | null {
   return v;
 }
 
+export function sanitizeFromAddress(value: string): string | null {
+  const v = value.trim();
+  if (!v) return "";
+  if (v.length > 180) return null;
+  const angled = v.match(/^(.+)<([^>]+)>$/);
+  const addr = sanitizeEmail(angled ? angled[2] : v);
+  if (!addr) return null;
+  if (!angled) return addr;
+  const name = angled[1].trim().replace(/[<>\r\n]/g, "");
+  return name ? `${name} <${addr}>` : addr;
+}
+
+export const SMTP_PORTS = ["25", "465", "587", "2525"] as const;
+
+export function validSmtpHost(host: string): boolean {
+  if (!host) return true;
+  if (/\s/.test(host) || /[:/@]/.test(host) || /^https?:/i.test(host)) return false;
+  return /^[a-zA-Z0-9][a-zA-Z0-9.-]{0,253}$/.test(host);
+}
+
+export function validSmtpPort(port: string): boolean {
+  return !port || (SMTP_PORTS as readonly string[]).includes(port);
+}
+
+export function validTelegramChatId(id: string): boolean {
+  return !id || /^-?\d{1,20}$/.test(id);
+}
+
 export function validatePassword(password: string): string | null {
   if (password.length < 8) return "password must be at least 8 characters";
   if (password.length > 128) return "password is too long";

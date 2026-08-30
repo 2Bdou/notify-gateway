@@ -1,10 +1,11 @@
 import { connect } from "cloudflare:sockets";
-import type { ChannelResult, Env, NotifyPayload } from "../types";
+import type { SmtpConfig } from "../settings";
+import type { ChannelResult, NotifyPayload } from "../types";
 import { withRetry } from "../rate-limit";
 import { emailHtml, emailSubject, emailText } from "./format";
 
-export async function sendEmail(env: Env, payload: NotifyPayload): Promise<ChannelResult> {
-  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD) {
+export async function sendEmail(smtp: SmtpConfig, ready: boolean, payload: NotifyPayload): Promise<ChannelResult> {
+  if (!ready) {
     return {
       status: "sent",
       messageId: `mock_email_${crypto.randomUUID()}`,
@@ -13,15 +14,15 @@ export async function sendEmail(env: Env, payload: NotifyPayload): Promise<Chann
   }
 
   const mail = {
-    from: env.SMTP_FROM || env.SMTP_USER,
-    to: env.SMTP_TO || env.SMTP_USER,
+    from: smtp.from || smtp.user,
+    to: smtp.to || smtp.user,
     subject: emailSubject(payload),
     text: emailText(payload),
     html: emailHtml(payload),
   };
 
   return withRetry(async () => {
-    const messageId = await smtpSend(env, mail);
+    const messageId = await smtpSend(smtp, mail);
     return { status: "sent" as const, messageId };
   }).catch((err: unknown) => ({
     status: "failed" as const,
@@ -37,9 +38,9 @@ interface Mail {
   html: string;
 }
 
-async function smtpSend(env: Env, mail: Mail): Promise<string> {
-  const host = env.SMTP_HOST!;
-  const port = Number(env.SMTP_PORT || "587");
+async function smtpSend(smtp: SmtpConfig, mail: Mail): Promise<string> {
+  const host = smtp.host;
+  const port = Number(smtp.port || "587");
   const secure = port === 465;
   const socket = connect(
     { hostname: host, port },
@@ -103,9 +104,9 @@ async function smtpSend(env: Env, mail: Mail): Promise<string> {
 
     await send("AUTH LOGIN");
     await expect([334]);
-    await send(b64(env.SMTP_USER!));
+    await send(b64(smtp.user));
     await expect([334]);
-    await send(b64(env.SMTP_PASSWORD!));
+    await send(b64(smtp.password));
     await expect([235]);
 
     await send(`MAIL FROM:<${extractAddr(mail.from)}>`);

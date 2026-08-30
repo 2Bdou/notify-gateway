@@ -1,9 +1,14 @@
-import type { ChannelResult, Env, NotifyPayload } from "../types";
+import type { TelegramConfig } from "../settings";
+import type { ChannelResult, NotifyPayload } from "../types";
 import { withRetry } from "../rate-limit";
 import { telegramText } from "./format";
 
-export async function sendTelegram(env: Env, payload: NotifyPayload): Promise<ChannelResult> {
-  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+export async function sendTelegram(
+  telegram: TelegramConfig,
+  ready: boolean,
+  payload: NotifyPayload,
+): Promise<ChannelResult> {
+  if (!ready) {
     return {
       status: "sent",
       messageId: `mock_tg_${crypto.randomUUID()}`,
@@ -12,12 +17,12 @@ export async function sendTelegram(env: Env, payload: NotifyPayload): Promise<Ch
   }
 
   return withRetry(async () => {
-    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const url = `https://api.telegram.org/bot${telegram.botToken}/sendMessage`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
+        chat_id: telegram.chatId,
         text: telegramText(payload),
         disable_web_page_preview: true,
       }),

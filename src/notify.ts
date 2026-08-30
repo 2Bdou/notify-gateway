@@ -2,6 +2,7 @@ import { sendEmail } from "./channels/email";
 import { sendTelegram } from "./channels/telegram";
 import { getProjectByApiKey } from "./projects";
 import { clientIp, consumeRateLimit, rateLimits } from "./rate-limit";
+import { loadChannelConfig } from "./settings";
 import { insertTask, updateTaskOutcome } from "./tasks";
 import type { Channel, ChannelResult, Env, NotifyPayload } from "./types";
 import { deriveSendStatus, intersectChannels, validateNotifyPayload } from "./validate";
@@ -50,6 +51,7 @@ export async function handleNotify(env: Env, request: Request): Promise<Response
   const payload = parsed.value;
   const active = intersectChannels(payload.channel, project.channels);
   const taskId = await insertTask(env, project.id, payload, { sendStatus: "pending" });
+  const config = await loadChannelConfig(env);
 
   const channels: Record<string, ChannelResult> = {};
   const errors: string[] = [];
@@ -60,7 +62,10 @@ export async function handleNotify(env: Env, request: Request): Promise<Response
         channels[ch] = { status: "skipped" };
         return;
       }
-      const result = ch === "email" ? await sendEmail(env, payload) : await sendTelegram(env, payload);
+      const result =
+        ch === "email"
+          ? await sendEmail(config.smtp, config.smtpReady, payload)
+          : await sendTelegram(config.telegram, config.telegramReady, payload);
       channels[ch] = result;
       if (result.status === "failed" && result.error) errors.push(`${ch}: ${result.error}`);
     }),
