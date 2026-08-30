@@ -4,6 +4,8 @@
 
 技术栈：Cloudflare Workers + KV + D1。管理后台是 Worker 直接输出的 HTML。
 
+续期仓库接入上报接口：[docs/renew-client.md](docs/renew-client.md)。
+
 ## 能做什么
 
 - 邮箱 + 密码登录，JWT 写入 HttpOnly Cookie
@@ -79,40 +81,11 @@ npm run cf:setup
 
 1. 打开 `https://<worker>/setup` 创建管理员
 2. 打开 **设置**：填 SMTP / Telegram；对外域名只填 `notify.example.com`（程序补齐 `https://` 和 `/api/notify`）
-3. 后台新建项目，在详情页复制 `NOTIFY_URL` 和 `NOTIFY_TOKEN`（或「复制两行」），配到续期仓库：
+3. 后台新建项目，在详情页复制 `NOTIFY_URL` 和 `NOTIFY_TOKEN`（或「复制两行」），配到续期仓库。
 
-```text
-NOTIFY_URL=https://notify.example.com/api/notify
-NOTIFY_TOKEN=该项目独立密钥
-```
+后续续期 / 备份仓库怎么调接口、字段和错误码，见 **[docs/renew-client.md](docs/renew-client.md)**。Python 示例：`examples/notify.py`。
 
 Workers 没有完整 Node 运行时，邮件通道用 `cloudflare:sockets` 直连你的第三方 SMTP（465 隐式 TLS / 587 STARTTLS），而不是 nodemailer。
-
-## 上报格式
-
-```
-POST /api/notify
-Authorization: Bearer <项目独立密钥>
-```
-
-```json
-{
-  "source": "puratya-renew",
-  "title": "MWS 续期完成",
-  "content": "续期完成报告",
-  "level": "partial",
-  "channel": ["email", "telegram"],
-  "data": {
-    "total": 5,
-    "success": 3,
-    "failed": 2,
-    "details": [
-      { "id": "bot_001", "name": "Bot A", "status": "success" },
-      { "id": "bot_002", "name": "Bot B", "status": "failed", "error": "HTTP 403" }
-    ]
-  }
-}
-```
 
 ## 接口
 
