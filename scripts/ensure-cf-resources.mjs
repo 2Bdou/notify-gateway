@@ -26,8 +26,26 @@ export function isValidD1Id(id) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || "");
 }
 
+function wranglerBin() {
+  const local = path.join(process.cwd(), "node_modules", ".bin", "wrangler");
+  return fs.existsSync(local) ? local : "npx --no-install wrangler";
+}
+
 function sh(cmd) {
-  return execSync(cmd, { encoding: "utf8" });
+  console.log(`→ ${cmd}`);
+  return execSync(cmd, {
+    encoding: "utf8",
+    timeout: 90_000,
+    env: {
+      ...process.env,
+      CI: "true",
+      WRANGLER_SEND_METRICS: "false",
+    },
+  });
+}
+
+function wrangler(args) {
+  return sh(`${wranglerBin()} ${args}`);
 }
 
 function extractJson(raw) {
@@ -40,6 +58,19 @@ function extractJson(raw) {
   );
   if (!Number.isFinite(start)) throw new Error(`Expected JSON from wrangler:\n${raw}`);
   return JSON.parse(text.slice(start));
+}
+
+function findD1(raw) {
+  try {
+    const listed = asList(extractJson(raw));
+    const row = listed.find((item) => item.name === D1_NAME);
+    if (row) return row.uuid || row.id;
+  } catch {
+    /* table output */
+  }
+  const escaped = D1_NAME.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const row = raw.match(new RegExp(`([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*${escaped}`, "i"));
+  return row?.[1] || null;
 }
 
 function asList(value) {
@@ -70,13 +101,15 @@ export function main() {
   d1 = process.env.NOTIFY_D1_ID || d1;
 
   if (isPlaceholder(kv)) {
-    const listed = asList(extractJson(sh("npx wrangler kv namespace list")));
+    console.log("Looking up KV namespace notify-projects…");
+    const listed = asList(extractJson(wrangler("kv namespace list")));
     const found = listed.find((item) => item.title === KV_TITLE);
     if (found?.id) {
       kv = found.id;
       console.log(`Reusing KV ${KV_TITLE} (${kv})`);
     } else {
-      const created = sh(`npx wrangler kv namespace create ${KV_TITLE}`);
+      console.log("Creating KV namespace notify-projects…");
+      const created = wrangler(`kv namespace create ${KV_TITLE}`);
       kv = created.match(/id\s*=\s*"([^"]+)"/)?.[1];
       if (!kv) throw new Error(`Failed to create KV:\n${created}`);
       console.log(`Created KV ${KV_TITLE} (${kv})`);
@@ -86,14 +119,15 @@ export function main() {
   }
 
   if (isPlaceholder(d1) || !isValidD1Id(d1)) {
-    const listed = asList(extractJson(sh("npx wrangler d1 list")));
-    const found = listed.find((item) => item.name === D1_NAME);
+    console.log("Looking up D1 database notify-tasks…");
+    let found = findD1(wrangler("d1 list"));
     if (found) {
-      d1 = found.uuid || found.id;
+      d1 = found;
       console.log(`Reusing D1 ${D1_NAME} (${d1})`);
     } else {
-      const created = sh(`npx wrangler d1 create ${D1_NAME}`);
-      d1 = created.match(/database_id\s*=\s*"([^"]+)"/)?.[1];
+      console.log("Creating D1 database notify-tasks…");
+      const created = wrangler(`d1 create ${D1_NAME}`);
+      d1 = created.match(/database_id\s*=\s*"([^"]+)"/)?.[1] || created.match(/uuid\s*[:=]\s*"?([0-9a-f-]{36})/i)?.[1];
       if (!d1) throw new Error(`Failed to create D1:\n${created}`);
       console.log(`Created D1 ${D1_NAME} (${d1})`);
     }
