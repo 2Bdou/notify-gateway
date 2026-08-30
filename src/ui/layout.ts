@@ -121,6 +121,8 @@ td { padding: 12px 8px; border-bottom: 1px solid #1d2540; vertical-align: top; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .keybox { background: var(--bg); border: 1px dashed var(--accent); padding: 12px; border-radius: 10px; word-break: break-all; }
 .filters { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 16px; }
+.chk { display:flex; align-items:center; gap:8px; color:var(--text); font-size:14px; }
+.chk input { width:auto; }
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
   .side { border-right: 0; border-bottom: 1px solid var(--line); }

@@ -91,10 +91,10 @@ export function projectsPage(email: string, projects: Project[], flash?: string)
       </div>
       <div class="card" style="margin-bottom:16px">
         <form method="post" action="/api/projects">
-          <div class="row">
+          <div class="row" style="align-items:end">
             <div class="field" style="flex:1;margin:0"><label>项目名称</label><input name="name" required placeholder="例如 puratya-renew"></div>
-            <div class="field" style="margin:0"><label>邮件</label><input type="checkbox" name="channel_email" value="1" checked></div>
-            <div class="field" style="margin:0"><label>Telegram</label><input type="checkbox" name="channel_telegram" value="1" checked></div>
+            <label class="chk"><input type="checkbox" name="channel_email" value="1" checked> 邮件</label>
+            <label class="chk"><input type="checkbox" name="channel_telegram" value="1" checked> Telegram</label>
             <button type="submit">新建项目</button>
           </div>
         </form>
