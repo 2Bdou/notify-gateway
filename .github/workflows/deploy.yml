@@ -30,6 +30,19 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/ensure-cf-resources.mjs
 
+      - name: Confirm D1 id is a real UUID
+        run: |
+          id=$(sed -n 's/^database_id = "\([^"]*\)"/\1/p' wrangler.toml | head -1)
+          echo "D1 id=$id"
+          if ! echo "$id" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+            echo "ensure-cf-resources did not write a real D1 UUID" >&2
+            exit 1
+          fi
+          if echo "$id" | grep -Eq '^0+-0+-0+-0+-0+$'; then
+            echo "D1 id is still the all-zero placeholder" >&2
+            exit 1
+          fi
+
       - name: Apply D1 migrations
         env:
           CI: true

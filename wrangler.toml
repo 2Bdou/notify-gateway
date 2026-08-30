@@ -10,10 +10,10 @@ RATE_LIMIT_PROJECT = "120"
 
 [[kv_namespaces]]
 binding = "NOTIFY_KV"
-id = "00000000000000000000000000000001"
+id = "00000000000000000000000000000000"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "notify-tasks"
-database_id = "00000000000000000000000000000002"
+database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"

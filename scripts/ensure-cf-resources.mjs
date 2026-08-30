@@ -6,17 +6,28 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const TOML_PATH = path.join(process.cwd(), "wrangler.toml");
 const KV_TITLE = "notify-projects";
 const D1_NAME = "notify-tasks";
 
-function sh(cmd) {
-  return execSync(cmd, { encoding: "utf8" });
+export function isPlaceholder(id) {
+  if (!id || typeof id !== "string") return true;
+  const compact = id.replace(/-/g, "").toLowerCase();
+  if (compact.length < 8) return true;
+  if (/^0+$/.test(compact)) return true;
+  // Local/repo placeholders like ...0001 / ...0002 are not valid CF resources.
+  if (/^0+[0-9a-f]{1,2}$/.test(compact)) return true;
+  return false;
 }
 
-function isPlaceholder(id) {
-  return !id || /^0+$/.test(id.replace(/-/g, ""));
+export function isValidD1Id(id) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || "");
+}
+
+function sh(cmd) {
+  return execSync(cmd, { encoding: "utf8" });
 }
 
 function extractJson(raw) {
@@ -39,53 +50,65 @@ function asList(value) {
   return [];
 }
 
-function replaceField(toml, section, key, value) {
+export function replaceField(toml, section, key, value) {
   const re = new RegExp(`(\\[\\[${section}\\]\\][\\s\\S]*?${key}\\s*=\\s*")[^"]*(")`);
   if (!re.test(toml)) throw new Error(`wrangler.toml missing [[${section}]] ${key}`);
   return toml.replace(re, `$1${value}$2`);
 }
 
-function readIds(toml) {
+export function readIds(toml) {
   return {
     kv: toml.match(/\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*"([^"]+)"/)?.[1],
     d1: toml.match(/\[\[d1_databases\]\][\s\S]*?database_id\s*=\s*"([^"]+)"/)?.[1],
   };
 }
 
-let toml = fs.readFileSync(TOML_PATH, "utf8");
-let { kv, d1 } = readIds(toml);
-kv = process.env.NOTIFY_KV_ID || kv;
-d1 = process.env.NOTIFY_D1_ID || d1;
+export function main() {
+  let toml = fs.readFileSync(TOML_PATH, "utf8");
+  let { kv, d1 } = readIds(toml);
+  kv = process.env.NOTIFY_KV_ID || kv;
+  d1 = process.env.NOTIFY_D1_ID || d1;
 
-if (isPlaceholder(kv)) {
-  const listed = asList(extractJson(sh("npx wrangler kv namespace list")));
-  const found = listed.find((item) => item.title === KV_TITLE);
-  if (found?.id) {
-    kv = found.id;
-    console.log(`Reusing KV ${KV_TITLE} (${kv})`);
+  if (isPlaceholder(kv)) {
+    const listed = asList(extractJson(sh("npx wrangler kv namespace list")));
+    const found = listed.find((item) => item.title === KV_TITLE);
+    if (found?.id) {
+      kv = found.id;
+      console.log(`Reusing KV ${KV_TITLE} (${kv})`);
+    } else {
+      const created = sh(`npx wrangler kv namespace create ${KV_TITLE}`);
+      kv = created.match(/id\s*=\s*"([^"]+)"/)?.[1];
+      if (!kv) throw new Error(`Failed to create KV:\n${created}`);
+      console.log(`Created KV ${KV_TITLE} (${kv})`);
+    }
   } else {
-    const created = sh(`npx wrangler kv namespace create ${KV_TITLE}`);
-    kv = created.match(/id\s*=\s*"([^"]+)"/)?.[1];
-    if (!kv) throw new Error(`Failed to create KV:\n${created}`);
-    console.log(`Created KV ${KV_TITLE} (${kv})`);
+    console.log(`Keeping existing KV id ${kv}`);
   }
+
+  if (isPlaceholder(d1) || !isValidD1Id(d1)) {
+    const listed = asList(extractJson(sh("npx wrangler d1 list")));
+    const found = listed.find((item) => item.name === D1_NAME);
+    if (found) {
+      d1 = found.uuid || found.id;
+      console.log(`Reusing D1 ${D1_NAME} (${d1})`);
+    } else {
+      const created = sh(`npx wrangler d1 create ${D1_NAME}`);
+      d1 = created.match(/database_id\s*=\s*"([^"]+)"/)?.[1];
+      if (!d1) throw new Error(`Failed to create D1:\n${created}`);
+      console.log(`Created D1 ${D1_NAME} (${d1})`);
+    }
+    if (!isValidD1Id(d1)) {
+      throw new Error(`D1 id is still not a UUID after provision: ${d1}`);
+    }
+  } else {
+    console.log(`Keeping existing D1 id ${d1}`);
+  }
+
+  toml = replaceField(toml, "kv_namespaces", "id", kv);
+  toml = replaceField(toml, "d1_databases", "database_id", d1);
+  fs.writeFileSync(TOML_PATH, toml);
+  console.log(`Wrote wrangler.toml bindings: NOTIFY_KV=${kv} DB=${d1}`);
 }
 
-if (isPlaceholder(d1)) {
-  const listed = asList(extractJson(sh("npx wrangler d1 list")));
-  const found = listed.find((item) => item.name === D1_NAME);
-  if (found) {
-    d1 = found.uuid || found.id;
-    console.log(`Reusing D1 ${D1_NAME} (${d1})`);
-  } else {
-    const created = sh(`npx wrangler d1 create ${D1_NAME}`);
-    d1 = created.match(/database_id\s*=\s*"([^"]+)"/)?.[1];
-    if (!d1) throw new Error(`Failed to create D1:\n${created}`);
-    console.log(`Created D1 ${D1_NAME} (${d1})`);
-  }
-}
-
-toml = replaceField(toml, "kv_namespaces", "id", kv);
-toml = replaceField(toml, "d1_databases", "database_id", d1);
-fs.writeFileSync(TOML_PATH, toml);
-console.log(`Wrote wrangler.toml bindings: NOTIFY_KV=${kv} DB=${d1}`);
+const invoked = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (invoked) main();
