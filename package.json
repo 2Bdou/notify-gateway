@@ -10,8 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "deploy": "npm run db:migrate && wrangler deploy",
-    "db:migrate": "wrangler d1 migrations apply DB --remote",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate": "wrangler d1 migrations apply notify-tasks --remote --yes",
+    "db:migrate:local": "wrangler d1 migrations apply notify-tasks --local --yes",
     "db:init": "wrangler d1 execute notify-tasks --local --file=./schema.sql",
     "cf:setup": "node scripts/ensure-cf-resources.mjs && npm run deploy"
   },

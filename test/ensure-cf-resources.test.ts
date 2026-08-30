@@ -20,7 +20,8 @@ describe("cloudflare deploy wiring", () => {
       cloudflare: { bindings: Record<string, { description: string }> };
     };
     expect(pkg.scripts.deploy).toContain("db:migrate");
-    expect(pkg.scripts["db:migrate"]).toBe("wrangler d1 migrations apply DB --remote");
+    expect(pkg.scripts["db:migrate"]).toContain("notify-tasks");
+    expect(pkg.scripts["db:migrate"]).toContain("--yes");
     expect(pkg.cloudflare.bindings.JWT_SECRET.description).toBeTruthy();
     expect(pkg.cloudflare.bindings.KEY_HMAC_SECRET.description).toBeTruthy();
   });
@@ -29,6 +30,7 @@ describe("cloudflare deploy wiring", () => {
     const yml = readFileSync(join(root, ".github/workflows/deploy.yml"), "utf8");
     expect(yml).toContain("cloudflare/wrangler-action@v3");
     expect(yml).toContain("ensure-cf-resources.mjs");
+    expect(yml).toContain("migrations apply notify-tasks --remote --yes");
     expect(yml).toContain("JWT_SECRET");
     expect(yml).toContain("KEY_HMAC_SECRET");
   });
