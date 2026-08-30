@@ -22,12 +22,28 @@ export async function sendEmail(smtp: SmtpConfig, ready: boolean, payload: Notif
   };
 
   return withRetry(async () => {
-    const messageId = await smtpSend(smtp, mail);
+    const messageId = await withTimeout(smtpSend(smtp, mail), 8000, "SMTP timeout");
     return { status: "sent" as const, messageId };
-  }).catch((err: unknown) => ({
+  }, 2, 200).catch((err: unknown) => ({
     status: "failed" as const,
     error: err instanceof Error ? err.message : String(err),
   }));
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(label)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
 }
 
 interface Mail {

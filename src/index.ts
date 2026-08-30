@@ -191,6 +191,60 @@ app.get("/tasks/:id", async (c) => {
   return c.html(taskDetailPage(session.email, task, project?.name || task.projectId));
 });
 
+async function saveSettingsHandler(c: import("hono").Context<App>) {
+  const session = (await readSession(c))!;
+  const stored = (await loadStoredSettings(c.env)) || emptyStored();
+  const patch = patchFromBody(await readBody(c));
+  patch.updatedBy = session.email;
+  const invalid = validateSettingsPatch(patch);
+  if (invalid) {
+    if (wantsHtml(c)) return c.redirect(`/settings?err=${encodeURIComponent(invalid)}`);
+    return c.json({ success: false, error: invalid }, 400);
+  }
+  const next = applySettingsPatch(stored, patch);
+  await saveStoredSettings(c.env, next);
+  const item = publicSettings(next, c.env);
+  if (wantsHtml(c)) return c.redirect("/settings?ok=" + encodeURIComponent("通道设置已保存。"));
+  return c.json({ success: true, item });
+}
+
+async function testChannelHandler(c: import("hono").Context<App>, channel: "email" | "telegram") {
+  const stored = (await loadStoredSettings(c.env)) || emptyStored();
+  const patch = patchFromBody(await readBody(c));
+  const invalid = validateSettingsPatch(patch);
+  if (invalid) {
+    if (wantsHtml(c)) return c.redirect(`/settings?err=${encodeURIComponent(invalid)}`);
+    return c.json({ success: false, error: invalid }, 400);
+  }
+  const merged = applySettingsPatch(stored, patch);
+  const config = resolveChannelConfig(merged, c.env);
+  const payload = testPayload(channel);
+  const result =
+    channel === "email"
+      ? await sendEmail(config.smtp, config.smtpReady, payload)
+      : await sendTelegram(config.telegram, config.telegramReady, payload);
+  const text = result.mock
+    ? `${channel === "email" ? "邮件" : "Telegram"} 未配齐，已走 mock（${result.messageId}）`
+    : result.status === "sent"
+      ? `测试已发送（${result.messageId || "ok"}）`
+      : `测试失败：${result.error || result.status}`;
+  if (wantsHtml(c)) {
+    const q = result.status === "sent" ? "ok" : "err";
+    return c.redirect(`/settings?${q}=${encodeURIComponent(text)}`);
+  }
+  return c.json({
+    success: result.status === "sent",
+    mock: result.mock || false,
+    result,
+  });
+}
+
+function settingsFlash(ok?: string, err?: string): { kind: "ok" | "err"; text: string } | undefined {
+  if (err) return { kind: "err", text: err };
+  if (ok) return { kind: "ok", text: ok };
+  return undefined;
+}
+
 app.get("/settings", async (c) => {
   const session = (await readSession(c))!;
   const stored = await loadStoredSettings(c.env);
@@ -388,59 +442,5 @@ function safeNext(value: string): string {
 function fail(c: import("hono").Context<App>, error: string, status: 400 | 401 | 404) {
   if (wantsHtml(c)) return c.text(error, status);
   return c.json({ success: false, error }, status);
-}
-
-async function saveSettingsHandler(c: import("hono").Context<App>) {
-  const session = (await readSession(c))!;
-  const stored = (await loadStoredSettings(c.env)) || emptyStored();
-  const patch = patchFromBody(await readBody(c));
-  patch.updatedBy = session.email;
-  const invalid = validateSettingsPatch(patch);
-  if (invalid) {
-    if (wantsHtml(c)) return c.redirect(`/settings?err=${encodeURIComponent(invalid)}`);
-    return c.json({ success: false, error: invalid }, 400);
-  }
-  const next = applySettingsPatch(stored, patch);
-  await saveStoredSettings(c.env, next);
-  const item = publicSettings(next, c.env);
-  if (wantsHtml(c)) return c.redirect("/settings?ok=" + encodeURIComponent("通道设置已保存。"));
-  return c.json({ success: true, item });
-}
-
-async function testChannelHandler(c: import("hono").Context<App>, channel: "email" | "telegram") {
-  const stored = (await loadStoredSettings(c.env)) || emptyStored();
-  const patch = patchFromBody(await readBody(c));
-  const invalid = validateSettingsPatch(patch);
-  if (invalid) {
-    if (wantsHtml(c)) return c.redirect(`/settings?err=${encodeURIComponent(invalid)}`);
-    return c.json({ success: false, error: invalid }, 400);
-  }
-  const merged = applySettingsPatch(stored, patch);
-  const config = resolveChannelConfig(merged, c.env);
-  const payload = testPayload(channel);
-  const result =
-    channel === "email"
-      ? await sendEmail(config.smtp, config.smtpReady, payload)
-      : await sendTelegram(config.telegram, config.telegramReady, payload);
-  const text = result.mock
-    ? `${channel === "email" ? "邮件" : "Telegram"} 未配齐，已走 mock（${result.messageId}）`
-    : result.status === "sent"
-      ? `测试已发送（${result.messageId || "ok"}）`
-      : `测试失败：${result.error || result.status}`;
-  if (wantsHtml(c)) {
-    const q = result.status === "sent" ? "ok" : "err";
-    return c.redirect(`/settings?${q}=${encodeURIComponent(text)}`);
-  }
-  return c.json({
-    success: result.status === "sent",
-    mock: result.mock || false,
-    result,
-  });
-}
-
-function settingsFlash(ok?: string, err?: string): { kind: "ok" | "err"; text: string } | undefined {
-  if (err) return { kind: "err", text: err };
-  if (ok) return { kind: "ok", text: ok };
-  return undefined;
 }
 

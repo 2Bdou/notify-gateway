@@ -26,6 +26,7 @@ export async function sendTelegram(
         text: telegramText(payload),
         disable_web_page_preview: true,
       }),
+      signal: AbortSignal.timeout(8000),
     });
     const body = (await res.json()) as { ok?: boolean; result?: { message_id?: number }; description?: string };
     if (!res.ok || !body.ok) {
