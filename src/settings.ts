@@ -1,5 +1,6 @@
 import { maskKey } from "./projects";
 import type { Env } from "./types";
+import { validatePublicHost } from "./notify-url";
 import {
   sanitizeEmail,
   sanitizeFromAddress,
@@ -27,6 +28,7 @@ export interface TelegramFields {
 export interface StoredSettings {
   smtp: SmtpFields;
   telegram: TelegramFields;
+  publicHost: string;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -34,6 +36,7 @@ export interface StoredSettings {
 export interface SettingsPatch {
   smtp?: Partial<SmtpFields> & { clearPassword?: boolean };
   telegram?: Partial<TelegramFields> & { clearToken?: boolean };
+  publicHost?: string;
   updatedBy?: string;
 }
 
@@ -73,6 +76,7 @@ export interface PublicSettings {
     tokenSet: boolean;
     botToken: string;
   };
+  publicHost: string;
   smtpReady: boolean;
   telegramReady: boolean;
   updatedAt?: string;
@@ -83,6 +87,7 @@ export function emptyStored(): StoredSettings {
   return {
     smtp: { host: "", port: "", user: "", from: "", to: "" },
     telegram: { chatId: "" },
+    publicHost: "",
   };
 }
 
@@ -100,6 +105,7 @@ export function envFallback(env: Env): StoredSettings {
       botToken: env.TELEGRAM_BOT_TOKEN || "",
       chatId: env.TELEGRAM_CHAT_ID || "",
     },
+    publicHost: "",
   };
 }
 
@@ -127,6 +133,7 @@ export function applySettingsPatch(stored: StoredSettings, patch: SettingsPatch)
   return {
     smtp,
     telegram,
+    publicHost: patch.publicHost !== undefined ? patch.publicHost.trim() : stored.publicHost || "",
     updatedAt: new Date().toISOString(),
     updatedBy: patch.updatedBy || stored.updatedBy,
   };
@@ -184,6 +191,7 @@ export function publicSettings(stored: StoredSettings | null, env: Env): PublicS
       tokenSet,
       botToken: tokenSet ? maskKey(resolved.telegram.botToken) : "",
     },
+    publicHost: stored?.publicHost || "",
     smtpReady: resolved.smtpReady,
     telegramReady: resolved.telegramReady,
     updatedAt: stored?.updatedAt,
@@ -211,6 +219,10 @@ export function validateSettingsPatch(patch: SettingsPatch): string | null {
   }
   if (patch.telegram?.chatId !== undefined && !validTelegramChatId(patch.telegram.chatId.trim())) {
     return "Telegram Chat ID 只能是数字（可带负号）";
+  }
+  if (patch.publicHost !== undefined) {
+    const hostErr = validatePublicHost(patch.publicHost);
+    if (hostErr) return hostErr;
   }
   return null;
 }
@@ -270,7 +282,11 @@ export function patchFromBody(body: Record<string, unknown>): SettingsPatch {
   }
   if (truthy(body.clear_telegram_token) || truthy(tgSrc.clearToken)) telegram.clearToken = true;
 
-  return { smtp, telegram };
+  const patch: SettingsPatch = { smtp, telegram };
+  if (has(body, "public_host") || has(body, "publicHost")) {
+    patch.publicHost = str(body.public_host ?? body.publicHost);
+  }
+  return patch;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -305,6 +321,7 @@ function normalizeStored(raw: Record<string, unknown>): StoredSettings {
   ) {
     out.telegram.botToken = str(telegram.botToken ?? telegram.bot_token);
   }
+  out.publicHost = str(raw.publicHost ?? raw.public_host);
   if (typeof raw.updatedAt === "string") out.updatedAt = raw.updatedAt;
   if (typeof raw.updatedBy === "string") out.updatedBy = raw.updatedBy;
   return out;

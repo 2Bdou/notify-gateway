@@ -114,8 +114,19 @@ export function projectDetailPage(
   email: string,
   project: Project,
   stats: { total: number; sent: number; partial: number; failed: number },
-  revealedKey?: string,
+  opts: { revealedKey?: string; notifyUrl: string },
 ): string {
+  const token = opts.revealedKey || "";
+  const secrets = token
+    ? `NOTIFY_URL=${opts.notifyUrl}\nNOTIFY_TOKEN=${token}`
+    : `NOTIFY_URL=${opts.notifyUrl}`;
+  const tokenBox = token
+    ? `<div class="copyrow"><div class="keybox mono">${esc(token)}</div>
+        <button type="button" class="ghost" data-copy="${attr(token)}">复制 Token</button></div>
+        <p class="hint">完整 Token 只在新建或重新生成时显示一次，离开后只留掩码。</p>`
+    : `<div class="keybox mono">${esc(maskKey(project.apiKey))}</div>
+        <p class="hint">完整 Token 已隐藏。需要新值请点右侧「重新生成 Key」，旧 Token 会立刻失效。</p>`;
+
   return layout({
     title: project.name,
     email,
@@ -130,11 +141,28 @@ export function projectDetailPage(
         ${stat("部分失败", stats.partial)}
         ${stat("失败", stats.failed)}
       </div>
-      ${
-        revealedKey
-          ? `<div class="card" style="margin-bottom:16px"><div>请立即复制完整 Key，离开本页后只显示掩码。</div><div class="keybox mono">${esc(revealedKey)}</div></div>`
-          : ""
-      }
+      <div class="card" style="margin-bottom:16px">
+        <strong>续期项目接入</strong>
+        <p class="hint">贴到该仓库的 GitHub Secrets / 环境变量。每个项目一把 Token，不要和其他项目共用。</p>
+        <div class="field">
+          <div class="copy-label"><label>NOTIFY_URL</label></div>
+          <div class="copyrow">
+            <div class="keybox mono">${esc(opts.notifyUrl)}</div>
+            <button type="button" class="ghost" data-copy="${attr(opts.notifyUrl)}">复制 URL</button>
+          </div>
+        </div>
+        <div class="field">
+          <div class="copy-label"><label>NOTIFY_TOKEN</label></div>
+          ${tokenBox}
+        </div>
+        <div class="field">
+          <label>GitHub Secrets（两行）</label>
+          <div class="copyrow">
+            <pre class="keybox mono" style="margin:0;white-space:pre-wrap">${esc(secrets)}</pre>
+            <button type="button" class="ghost" data-copy="${attr(secrets)}">${token ? "复制两行" : "复制 URL"}</button>
+          </div>
+        </div>
+      </div>
       <div class="grid" style="grid-template-columns:2fr 1fr;gap:16px">
         <div class="card">
           <form method="post" action="/api/projects/${attr(project.id)}">
@@ -256,10 +284,12 @@ export function settingsPage(
   email: string,
   settings: PublicSettings,
   flash?: { kind: "ok" | "err"; text: string },
+  extras?: { notifyUrl: string },
 ): string {
   const banner = flash
     ? `<div class="${flash.kind === "ok" ? "okflash" : "badflash"}">${esc(flash.text)}</div>`
     : "";
+  const notifyUrl = extras?.notifyUrl || "";
   return layout({
     title: "设置",
     email,
@@ -268,6 +298,23 @@ export function settingsPage(
       <h1>系统设置</h1>
       <p class="sub">整站一份 SMTP 和 Telegram。项目页只控制开不开通道，上报接口不能指定收件人。JWT / HMAC 密钥仍在 Cloudflare Secret。</p>
       ${banner}
+      <div class="card" style="margin-bottom:16px">
+        <strong>对外域名</strong>
+        <p class="hint">只填域名，例如 <span class="mono">notify.example.com</span>。程序会补成 <span class="mono">https://域名/api/notify</span>，创建项目时可以直接复制。留空则用当前访问地址。</p>
+        <form method="post" action="/api/settings">
+          <div class="field"><label>域名</label><input name="public_host" value="${attr(settings.publicHost)}" placeholder="notify.example.com" autocomplete="off"></div>
+          ${
+            notifyUrl
+              ? `<div class="field"><label>续期项目将复制的 NOTIFY_URL</label>
+                  <div class="copyrow">
+                    <div class="keybox mono">${esc(notifyUrl)}</div>
+                    <button type="button" class="ghost" data-copy="${attr(notifyUrl)}">复制 URL</button>
+                  </div></div>`
+              : ""
+          }
+          <button type="submit">保存域名</button>
+        </form>
+      </div>
       <div class="settings-grid">
         <div class="card">
           <strong>邮件 SMTP</strong>

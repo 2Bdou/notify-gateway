@@ -20,6 +20,7 @@ import {
 } from "./validate";
 import { sendEmail } from "./channels/email";
 import { sendTelegram } from "./channels/telegram";
+import { buildNotifyUrl } from "./notify-url";
 import {
   applySettingsPatch,
   emptyStored,
@@ -164,7 +165,12 @@ app.get("/projects/:id", async (c) => {
   if (!project) return c.text("Not found", 404);
   const session = (await readSession(c))!;
   const stats = await projectStats(c.env, id);
-  return c.html(projectDetailPage(session.email, project, stats, c.req.query("key")));
+  return c.html(
+    projectDetailPage(session.email, project, stats, {
+      revealedKey: c.req.query("key") || undefined,
+      notifyUrl: await notifyUrlFrom(c),
+    }),
+  );
 });
 
 app.get("/tasks", async (c) => {
@@ -203,7 +209,10 @@ async function saveSettingsHandler(c: import("hono").Context<App>) {
   }
   const next = applySettingsPatch(stored, patch);
   await saveStoredSettings(c.env, next);
-  const item = publicSettings(next, c.env);
+  const item = {
+    ...publicSettings(next, c.env),
+    notifyUrl: buildNotifyUrl(next.publicHost, new URL(c.req.url).origin),
+  };
   if (wantsHtml(c)) return c.redirect("/settings?ok=" + encodeURIComponent("通道设置已保存。"));
   return c.json({ success: true, item });
 }
@@ -249,12 +258,16 @@ app.get("/settings", async (c) => {
   const session = (await readSession(c))!;
   const stored = await loadStoredSettings(c.env);
   const flash = settingsFlash(c.req.query("ok"), c.req.query("err"));
-  return c.html(settingsPage(session.email, publicSettings(stored, c.env), flash));
+  const notifyUrl = await notifyUrlFrom(c);
+  return c.html(settingsPage(session.email, publicSettings(stored, c.env), flash, { notifyUrl }));
 });
 
 app.get("/api/settings", async (c) => {
   const stored = await loadStoredSettings(c.env);
-  return c.json({ success: true, item: publicSettings(stored, c.env) });
+  return c.json({
+    success: true,
+    item: { ...publicSettings(stored, c.env), notifyUrl: await notifyUrlFrom(c) },
+  });
 });
 
 app.put("/api/settings", saveSettingsHandler);
@@ -275,7 +288,7 @@ app.post("/api/projects", async (c) => {
   const channels = channelsFrom(body);
   const project = await createProject(c.env, name, channels.length ? channels : ["email", "telegram"]);
   if (wantsHtml(c)) return c.redirect(`/projects/${project.id}?key=${encodeURIComponent(project.apiKey)}`);
-  return c.json({ success: true, item: publicProject(project, true) }, 201);
+  return c.json({ success: true, item: publicProject(project, true), notifyUrl: await notifyUrlFrom(c) }, 201);
 });
 
 app.put("/api/projects/:id", updateProjectHandler);
@@ -294,7 +307,7 @@ app.post("/api/projects/:id/regenerate", async (c) => {
   const project = await regenerateKey(c.env, id);
   if (!project) return fail(c, "not found", 404);
   if (wantsHtml(c)) return c.redirect(`/projects/${project.id}?key=${encodeURIComponent(project.apiKey)}`);
-  return c.json({ success: true, item: publicProject(project, true) });
+  return c.json({ success: true, item: publicProject(project, true), notifyUrl: await notifyUrlFrom(c) });
 });
 
 app.get("/api/tasks", async (c) => {
@@ -437,6 +450,11 @@ function wantsHtml(c: import("hono").Context): boolean {
 function safeNext(value: string): string {
   if (value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")) return value;
   return "/dashboard";
+}
+
+async function notifyUrlFrom(c: import("hono").Context<App>): Promise<string> {
+  const stored = await loadStoredSettings(c.env);
+  return buildNotifyUrl(stored?.publicHost || "", new URL(c.req.url).origin);
 }
 
 function fail(c: import("hono").Context<App>, error: string, status: 400 | 401 | 404) {

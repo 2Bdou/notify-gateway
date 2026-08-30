@@ -25,7 +25,7 @@ cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-打开 http://127.0.0.1:43147/setup 创建管理员。需要真发信时，到后台 **设置** 填写 SMTP / Telegram，不必改 `.dev.vars`。然后新建项目，复制 Key。
+打开 http://127.0.0.1:43147/setup 创建管理员。需要真发信时，到后台 **设置** 填写 SMTP / Telegram，对外域名只填 `notify.example.com`。然后新建项目，在详情页复制 `NOTIFY_URL` 和 `NOTIFY_TOKEN`。
 
 ```bash
 export NOTIFY_URL=http://127.0.0.1:43147/api/notify
@@ -47,7 +47,7 @@ SMTP / Telegram 仍然在上线后的 **设置** 页填写。部署时只需要 
 
 Cloudflare 的按钮只认 `github.com` / `gitlab.com` 的**公开**仓库，会自动：克隆到你的账号、创建 KV + D1、跑 Workers Builds。当前这份如果只在 Cursor Origin 私有仓，按钮点不开，先把代码推到 GitHub 再把下面 URL 换成你的仓库地址。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/adou/notify-gateway)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/2Bdou/notify-gateway)
 
 设置页里按提示填两个密钥（可用 `openssl rand -base64 48` 各生成一串）。部署完成后打开 `https://<worker>.workers.dev/setup`。
 
@@ -78,8 +78,8 @@ npm run cf:setup
 ### 上线后
 
 1. 打开 `https://<worker>/setup` 创建管理员
-2. 打开 **设置** 配置 SMTP / Telegram
-3. 后台新建项目，把 Key 配到续期仓库：
+2. 打开 **设置**：填 SMTP / Telegram；对外域名只填 `notify.example.com`（程序补齐 `https://` 和 `/api/notify`）
+3. 后台新建项目，在详情页复制 `NOTIFY_URL` 和 `NOTIFY_TOKEN`（或「复制两行」），配到续期仓库：
 
 ```text
 NOTIFY_URL=https://notify.example.com/api/notify
