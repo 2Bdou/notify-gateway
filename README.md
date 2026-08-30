@@ -41,27 +41,45 @@ npm test
 
 ## 部署到 Cloudflare
 
-1. 在 Cloudflare 创建 Worker、KV 命名空间 `notify-projects`、D1 数据库 `notify-tasks`
-2. 把 `wrangler.toml` 里的 KV / D1 id 换成真实 id
-3. 执行建表：
+SMTP / Telegram 仍然在上线后的 **设置** 页填写。部署时只需要 `JWT_SECRET` 和 `KEY_HMAC_SECRET`。
+
+### 方式 A：一键按钮（要公开的 GitHub / GitLab 仓库）
+
+Cloudflare 的按钮只认 `github.com` / `gitlab.com` 的**公开**仓库，会自动：克隆到你的账号、创建 KV + D1、跑 Workers Builds。当前这份如果只在 Cursor Origin 私有仓，按钮点不开，先把代码推到 GitHub 再把下面 URL 换成你的仓库地址。
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/adou/notify-gateway)
+
+设置页里按提示填两个密钥（可用 `openssl rand -base64 48` 各生成一串）。部署完成后打开 `https://<worker>.workers.dev/setup`。
+
+### 方式 B：GitHub Actions（私有仓也能用）
+
+把仓库推到 GitHub 后，在 **Settings → Secrets and variables → Actions** 加：
+
+| Secret | 说明 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | 自定义 Token：Workers Scripts Edit、Workers KV Storage Edit、D1 Edit、Account Settings Read |
+| `CLOUDFLARE_ACCOUNT_ID` | Dashboard 右侧 Account ID |
+| `JWT_SECRET` | `openssl rand -base64 48` |
+| `KEY_HMAC_SECRET` | 另生成一串，不要和 JWT 相同 |
+
+推到 `main` 或手动 **Run workflow** 就会：跑测试 → 没有真实 ID 时自动建 `notify-projects` / `notify-tasks` → 建表 → 部署 Worker → 写入两个 Secret。
+
+工作流文件：`.github/workflows/deploy.yml`。
+
+### 方式 C：本机一条命令
 
 ```bash
-npx wrangler d1 execute notify-tasks --remote --file=./schema.sql
+npx wrangler login
+npm run cf:setup
 ```
 
-4. 只配置登录与 Key 的根密钥（不要写进仓库）：
+会创建（或复用）KV / D1，写入本地 `wrangler.toml`（不要把真实 id 提交进 git），建表并部署。
 
-```bash
-npx wrangler secret put JWT_SECRET
-npx wrangler secret put KEY_HMAC_SECRET
-npx wrangler deploy
-```
+### 上线后
 
-SMTP 和 Telegram **不要**再 `secret put`。部署后打开后台 **设置** 填写，点「发送测试」即可。若你以前写过这些 Secret，没填设置页时仍会作为回退。
-
-5. 打开 `https://<worker>/setup` 创建管理员
-6. 打开 **设置** 配置 SMTP / Telegram
-7. 后台新建项目，把 Key 配到续期仓库：
+1. 打开 `https://<worker>/setup` 创建管理员
+2. 打开 **设置** 配置 SMTP / Telegram
+3. 后台新建项目，把 Key 配到续期仓库：
 
 ```text
 NOTIFY_URL=https://notify.example.com/api/notify

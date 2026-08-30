@@ -1,3 +1,4 @@
+# Used by wrangler locally and by the Deploy to Cloudflare button as secret prompts.
 JWT_SECRET=replace-with-a-long-random-jwt-secret
 KEY_HMAC_SECRET=replace-with-a-long-random-hmac-secret
 
