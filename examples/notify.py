@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Call notify-gateway from a renewal or backup job."""
+"""Call notify-gateway from a renewal or backup job.
+
+Field list, errors, and GitHub Actions wiring: docs/renew-client.md
+"""
 
 from __future__ import annotations
 
