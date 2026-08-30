@@ -1,0 +1,14 @@
+JWT_SECRET=replace-with-a-long-random-jwt-secret
+KEY_HMAC_SECRET=replace-with-a-long-random-hmac-secret
+
+# Leave SMTP empty to use the local mock mailer
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=Notify Gateway <notify@example.com>
+SMTP_TO=admin@example.com
+
+# Leave Telegram empty to use the local mock sender
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
