@@ -87,10 +87,10 @@ export function projectsPage(email: string, projects: Project[], flash?: string)
     active: "/projects",
     flash,
     body: `
-      <div class="row" style="justify-content:space-between">
-        <div><h1>项目</h1><p class="sub">新建项目会立即生成 Base64 Key，并用 HMAC-SHA256 入库。</p></div>
+      <div class="page-head">
+        <div><h1>项目</h1><p class="sub">新建立刻生成 Key。详情页左右分栏，凭证和编辑并排。</p></div>
       </div>
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" style="margin-bottom:10px">
         <form method="post" action="/api/projects">
           <div class="row" style="align-items:end">
             <div class="field" style="flex:1;margin:0"><label>项目名称</label><input name="name" required placeholder="例如 puratya-renew"></div>
@@ -122,73 +122,75 @@ export function projectDetailPage(
     : `NOTIFY_URL=${opts.notifyUrl}`;
   const tokenBox = token
     ? `<div class="copyrow"><div class="keybox mono">${esc(token)}</div>
-        <button type="button" class="ghost" data-copy="${attr(token)}">复制 Token</button></div>
-        <p class="hint">完整 Token 只在新建或重新生成时显示一次，离开后只留掩码。</p>`
-    : `<div class="keybox mono">${esc(maskKey(project.apiKey))}</div>
-        <p class="hint">完整 Token 已隐藏。需要新值请点右侧「重新生成 Key」，旧 Token 会立刻失效。</p>`;
+        <button type="button" class="ghost" data-copy="${attr(token)}">复制</button></div>
+        <p class="hint">完整 Token 只在新建或重新生成时显示一次。</p>`
+    : `<div class="copyrow"><div class="keybox mono">${esc(maskKey(project.apiKey))}</div></div>
+        <p class="hint">完整 Token 已隐藏。需要新值请重新生成 Key。</p>`;
 
   return layout({
     title: project.name,
     email,
     active: "/projects",
     body: `
-      <p><a href="/projects">← 项目列表</a></p>
-      <h1>${esc(project.name)}</h1>
-      <p class="sub">${esc(project.id)}</p>
-      <div class="stats">
-        ${stat("任务", stats.total)}
-        ${stat("送达", stats.sent)}
-        ${stat("部分失败", stats.partial)}
-        ${stat("失败", stats.failed)}
+      <div class="page-head">
+        <div>
+          <p class="back"><a href="/projects">← 项目列表</a></p>
+          <h1>${esc(project.name)}</h1>
+          <p class="sub">${esc(project.id)} · ${project.enabled ? "开启" : "关闭"} · ${esc(maskKey(project.apiKey))}</p>
+        </div>
+        <div class="statline">
+          <span>任务 <b>${stats.total}</b></span>
+          <span>送达 <b>${stats.sent}</b></span>
+          <span>部分失败 <b>${stats.partial}</b></span>
+          <span>失败 <b>${stats.failed}</b></span>
+        </div>
       </div>
-      <div class="card" style="margin-bottom:16px">
-        <strong>续期项目接入</strong>
-        <p class="hint">贴到该仓库的 GitHub Secrets / 环境变量。每个项目一把 Token，不要和其他项目共用。</p>
-        <div class="field">
-          <div class="copy-label"><label>NOTIFY_URL</label></div>
-          <div class="copyrow">
-            <div class="keybox mono">${esc(opts.notifyUrl)}</div>
-            <button type="button" class="ghost" data-copy="${attr(opts.notifyUrl)}">复制 URL</button>
-          </div>
-        </div>
-        <div class="field">
-          <div class="copy-label"><label>NOTIFY_TOKEN</label></div>
-          ${tokenBox}
-        </div>
-        <div class="field">
-          <label>GitHub Secrets（两行）</label>
-          <div class="copyrow">
-            <pre class="keybox mono" style="margin:0;white-space:pre-wrap">${esc(secrets)}</pre>
+      <div class="detail-grid">
+        <div class="card">
+          <div class="copy-label">
+            <strong>续期项目接入</strong>
             <button type="button" class="ghost" data-copy="${attr(secrets)}">${token ? "复制两行" : "复制 URL"}</button>
           </div>
+          <p class="hint">贴到该仓库的 GitHub Secrets / 环境变量。每个项目一把 Token，不要共用。</p>
+          <div class="cred-grid">
+            <div class="field">
+              <label>NOTIFY_URL</label>
+              <div class="copyrow">
+                <div class="keybox mono">${esc(opts.notifyUrl)}</div>
+                <button type="button" class="ghost" data-copy="${attr(opts.notifyUrl)}">复制</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>NOTIFY_TOKEN</label>
+              ${tokenBox}
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="grid" style="grid-template-columns:2fr 1fr;gap:16px">
         <div class="card">
           <form method="post" action="/api/projects/${attr(project.id)}">
             <input type="hidden" name="_method" value="PUT">
             <div class="field"><label>名称</label><input name="name" value="${attr(project.name)}" required></div>
             <div class="field">
-              <label>通知通道</label>
-              <label><input type="checkbox" name="channel_email" ${project.channels.includes("email") ? "checked" : ""}> 邮件</label>
-              <label><input type="checkbox" name="channel_telegram" ${project.channels.includes("telegram") ? "checked" : ""}> Telegram</label>
+              <label>通道与开关</label>
+              <div class="channels">
+                <label class="chk"><input type="checkbox" name="channel_email" ${project.channels.includes("email") ? "checked" : ""}> 邮件</label>
+                <label class="chk"><input type="checkbox" name="channel_telegram" ${project.channels.includes("telegram") ? "checked" : ""}> Telegram</label>
+                <label class="chk"><input type="checkbox" name="enabled" ${project.enabled ? "checked" : ""}> 允许上报</label>
+              </div>
             </div>
-            <div class="field">
-              <label>项目开关</label>
-              <label><input type="checkbox" name="enabled" ${project.enabled ? "checked" : ""}> 允许上报</label>
+            <div class="tight-actions">
+              <button type="submit">保存</button>
             </div>
-            <button type="submit">保存</button>
           </form>
-        </div>
-        <div class="card">
-          <div class="field"><label>当前 Key</label><div class="mono">${esc(maskKey(project.apiKey))}</div></div>
-          <form method="post" action="/api/projects/${attr(project.id)}/regenerate" style="margin-bottom:12px">
-            <button class="ghost" type="submit">重新生成 Key</button>
-          </form>
-          <form method="post" action="/api/projects/${attr(project.id)}" onsubmit="return confirm('软删除后 Key 立即失效，历史任务会保留。')">
-            <input type="hidden" name="_method" value="DELETE">
-            <button class="danger" type="submit">软删除项目</button>
-          </form>
+          <div class="tight-actions">
+            <form method="post" action="/api/projects/${attr(project.id)}/regenerate">
+              <button class="ghost" type="submit">重新生成 Key</button>
+            </form>
+            <form method="post" action="/api/projects/${attr(project.id)}" onsubmit="return confirm('软删除后 Key 立即失效，历史任务会保留。')">
+              <input type="hidden" name="_method" value="DELETE">
+              <button class="danger" type="submit">软删除</button>
+            </form>
+          </div>
         </div>
       </div>`,
   });
@@ -255,16 +257,20 @@ export function taskDetailPage(
     email,
     active: "/tasks",
     body: `
-      <p><a href="/tasks">← 任务列表</a></p>
-      <h1>${esc(task.title)}</h1>
-      <p class="sub">${esc(projectName)} · ${esc(task.source)} · ${esc(fmtTime(task.createdAt))}</p>
-      <div class="stats">
-        ${stat("级别", task.level)}
-        ${stat("发送", task.sendStatus)}
-        ${stat("邮件", task.emailStatus || "—")}
-        ${stat("Telegram", task.telegramStatus || "—")}
+      <div class="page-head">
+        <div>
+          <p class="back"><a href="/tasks">← 任务列表</a></p>
+          <h1>${esc(task.title)}</h1>
+          <p class="sub">${esc(projectName)} · ${esc(task.source)} · ${esc(fmtTime(task.createdAt))}</p>
+        </div>
+        <div class="statline">
+          <span>级别 <b>${esc(task.level)}</b></span>
+          <span>发送 <b>${esc(task.sendStatus)}</b></span>
+          <span>邮件 <b>${esc(task.emailStatus || "—")}</b></span>
+          <span>Telegram <b>${esc(task.telegramStatus || "—")}</b></span>
+        </div>
       </div>
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" style="margin-bottom:10px">
         <p>${esc(task.content)}</p>
         ${task.error ? `<div class="flash">${esc(task.error)}</div>` : ""}
         <div class="mono">email id: ${esc(task.emailMessageId || "—")}<br>telegram id: ${esc(task.telegramMessageId || "—")}</div>
@@ -296,23 +302,29 @@ export function settingsPage(
     active: "/settings",
     body: `
       <h1>系统设置</h1>
-      <p class="sub">整站一份 SMTP 和 Telegram。项目页只控制开不开通道，上报接口不能指定收件人。JWT / HMAC 密钥仍在 Cloudflare Secret。</p>
+      <p class="sub">整站一份 SMTP 和 Telegram。项目页只控制通道开关。JWT / HMAC 仍在 Cloudflare Secret。</p>
       ${banner}
-      <div class="card" style="margin-bottom:16px">
-        <strong>对外域名</strong>
-        <p class="hint">只填域名，例如 <span class="mono">notify.example.com</span>。程序会补成 <span class="mono">https://域名/api/notify</span>，创建项目时可以直接复制。留空则用当前访问地址。</p>
+      <div class="card" style="margin-bottom:10px">
         <form method="post" action="/api/settings">
-          <div class="field"><label>域名</label><input name="public_host" value="${attr(settings.publicHost)}" placeholder="notify.example.com" autocomplete="off"></div>
-          ${
-            notifyUrl
-              ? `<div class="field"><label>续期项目将复制的 NOTIFY_URL</label>
-                  <div class="copyrow">
-                    <div class="keybox mono">${esc(notifyUrl)}</div>
-                    <button type="button" class="ghost" data-copy="${attr(notifyUrl)}">复制 URL</button>
-                  </div></div>`
-              : ""
-          }
-          <button type="submit">保存域名</button>
+          <div class="inline-host">
+            <div class="field">
+              <label>对外域名</label>
+              <input name="public_host" value="${attr(settings.publicHost)}" placeholder="notify.example.com" autocomplete="off">
+            </div>
+            ${
+              notifyUrl
+                ? `<div class="field">
+                    <label>NOTIFY_URL 预览</label>
+                    <div class="copyrow">
+                      <div class="keybox mono">${esc(notifyUrl)}</div>
+                      <button type="button" class="ghost" data-copy="${attr(notifyUrl)}">复制</button>
+                    </div>
+                  </div>`
+                : ""
+            }
+            <button type="submit">保存域名</button>
+          </div>
+          <p class="hint" style="margin:8px 0 0">只填域名，例如 <span class="mono">notify.example.com</span>，会补成 <span class="mono">https://域名/api/notify</span>。留空则用当前访问地址。</p>
         </form>
       </div>
       <div class="settings-grid">
@@ -320,15 +332,17 @@ export function settingsPage(
           <strong>邮件 SMTP</strong>
           <p class="hint">${settings.smtpReady ? "已配置，上报会真发邮件。" : "未配齐 Host / 用户 / 密码时走 mock。"} 只发到 To，请求方改不了。</p>
           <form method="post" action="/api/settings">
-            <div class="field"><label>Host</label><input name="smtp_host" value="${attr(settings.smtp.host)}" placeholder="smtp.example.com" autocomplete="off"></div>
-            <div class="field"><label>Port</label>
-              <select name="smtp_port">
-                ${["587", "465", "25", "2525"].map((p) => `<option value="${p}" ${settings.smtp.port === p ? "selected" : ""}>${p}</option>`).join("")}
-              </select>
-            </div>
-            <div class="field"><label>用户名</label><input name="smtp_user" value="${attr(settings.smtp.user)}" autocomplete="off"></div>
-            <div class="field"><label>密码 ${settings.smtp.passwordSet ? `<span class="mono">已保存 ${esc(settings.smtp.password)}</span>` : ""}</label>
-              <input name="smtp_password" type="password" autocomplete="new-password" placeholder="${settings.smtp.passwordSet ? "留空则不修改" : "SMTP 密码"}">
+            <div class="cred-grid">
+              <div class="field"><label>Host</label><input name="smtp_host" value="${attr(settings.smtp.host)}" placeholder="smtp.example.com" autocomplete="off"></div>
+              <div class="field"><label>Port</label>
+                <select name="smtp_port">
+                  ${["587", "465", "25", "2525"].map((p) => `<option value="${p}" ${settings.smtp.port === p ? "selected" : ""}>${p}</option>`).join("")}
+                </select>
+              </div>
+              <div class="field"><label>用户名</label><input name="smtp_user" value="${attr(settings.smtp.user)}" autocomplete="off"></div>
+              <div class="field"><label>密码 ${settings.smtp.passwordSet ? `<span class="mono">已保存 ${esc(settings.smtp.password)}</span>` : ""}</label>
+                <input name="smtp_password" type="password" autocomplete="new-password" placeholder="${settings.smtp.passwordSet ? "留空则不修改" : "SMTP 密码"}">
+              </div>
             </div>
             <div class="field"><label>From</label><input name="smtp_from" value="${attr(settings.smtp.from)}" placeholder="Notify Gateway <notify@example.com>"></div>
             <div class="field"><label>To（固定收件人）</label><input name="smtp_to" type="email" value="${attr(settings.smtp.to)}" placeholder="you@example.com"></div>
