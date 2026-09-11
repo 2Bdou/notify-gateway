@@ -59,6 +59,11 @@ export async function updateTaskOutcome(
     .run();
 }
 
+export const TASK_PAGE_SIZE = 50;
+export const TASK_LIST_MAX = 200;
+export const TASK_EXPORT_MAX = 2000;
+export const TASK_DELETE_MAX = 200;
+
 export interface TaskFilter {
   projectId?: string;
   status?: SendStatus;
@@ -66,9 +71,13 @@ export interface TaskFilter {
   to?: string;
   limit?: number;
   offset?: number;
+  maxLimit?: number;
 }
 
-export async function listTasks(env: Env, filter: TaskFilter): Promise<{ items: TaskRecord[]; total: number }> {
+export function taskWhere(filter: Pick<TaskFilter, "projectId" | "status" | "from" | "to">): {
+  clause: string;
+  binds: unknown[];
+} {
   const where: string[] = [];
   const binds: unknown[] = [];
   if (filter.projectId) {
@@ -87,12 +96,45 @@ export async function listTasks(env: Env, filter: TaskFilter): Promise<{ items: 
     where.push("created_at <= ?");
     binds.push(filter.to);
   }
-  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return { clause: where.length ? `WHERE ${where.join(" AND ")}` : "", binds };
+}
+
+export function parseTaskIds(raw: unknown): number[] {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  const push = (value: unknown) => {
+    if (value === undefined || value === null || value === "") return;
+    if (Array.isArray(value)) {
+      for (const item of value) push(item);
+      return;
+    }
+    if (typeof value === "string" && value.includes(",")) {
+      for (const part of value.split(",")) push(part.trim());
+      return;
+    }
+    const text = String(value).trim();
+    if (!/^\d{1,12}$/.test(text)) return;
+    const id = Number(text);
+    if (!Number.isInteger(id) || id <= 0 || seen.has(id)) return;
+    seen.add(id);
+    ids.push(id);
+  };
+  push(raw);
+  return ids;
+}
+
+export async function listTasks(env: Env, filter: TaskFilter): Promise<{ items: TaskRecord[]; total: number }> {
+  const { clause, binds } = taskWhere(filter);
   const totalRow = await env.DB.prepare(`SELECT COUNT(*) as n FROM tasks ${clause}`)
     .bind(...binds)
     .first<{ n: number }>();
-  const limit = Math.min(filter.limit ?? 50, 200);
-  const offset = Math.max(filter.offset ?? 0, 0);
+  const rawLimit = filter.limit ?? TASK_PAGE_SIZE;
+  const cap =
+    filter.maxLimit && Number.isFinite(filter.maxLimit)
+      ? Math.min(Math.max(Math.floor(filter.maxLimit), 1), TASK_EXPORT_MAX)
+      : TASK_LIST_MAX;
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.floor(rawLimit), 1), cap) : TASK_PAGE_SIZE;
+  const offset = Number.isFinite(filter.offset) ? Math.max(Math.floor(filter.offset ?? 0), 0) : 0;
   const rows = await env.DB.prepare(
     `SELECT * FROM tasks ${clause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
   )
@@ -102,6 +144,36 @@ export async function listTasks(env: Env, filter: TaskFilter): Promise<{ items: 
     items: (rows.results || []).map(rowToTask),
     total: Number(totalRow?.n || 0),
   };
+}
+
+export async function deleteTasks(env: Env, ids: number[]): Promise<number> {
+  const unique = parseTaskIds(ids);
+  if (!unique.length) return 0;
+  let deleted = 0;
+  const chunkSize = 80;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const placeholders = chunk.map(() => "?").join(",");
+    const result = await env.DB.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
+    deleted += Number(result.meta?.changes || 0);
+  }
+  return deleted;
+}
+
+export async function deleteTask(env: Env, id: number): Promise<boolean> {
+  const deleted = await deleteTasks(env, [id]);
+  return deleted > 0;
+}
+
+export async function deleteTasksMatching(
+  env: Env,
+  filter: Pick<TaskFilter, "projectId" | "status" | "from" | "to">,
+): Promise<number> {
+  const { clause, binds } = taskWhere(filter);
+  const result = await env.DB.prepare(`DELETE FROM tasks ${clause}`).bind(...binds).run();
+  return Number(result.meta?.changes || 0);
 }
 
 export async function getTask(env: Env, id: number): Promise<TaskRecord | null> {

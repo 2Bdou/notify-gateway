@@ -11,7 +11,20 @@ import {
   updateProject,
 } from "./projects";
 import { ensureSchema } from "./schema";
-import { getTask, listTasks, overviewStats, projectStats, tasksToCsv } from "./tasks";
+import {
+  TASK_DELETE_MAX,
+  TASK_EXPORT_MAX,
+  TASK_PAGE_SIZE,
+  deleteTask,
+  deleteTasks,
+  deleteTasksMatching,
+  getTask,
+  listTasks,
+  overviewStats,
+  parseTaskIds,
+  projectStats,
+  tasksToCsv,
+} from "./tasks";
 import type { Channel, Env, SendStatus } from "./types";
 import {
   assertProjectId,
@@ -178,12 +191,22 @@ app.get("/tasks", async (c) => {
   const filter = parseTaskFilter(c);
   const [result, projects] = await Promise.all([listTasks(c.env, filter), listProjects(c.env)]);
   return c.html(
-    tasksPage(session.email, result.items, nameMap(projects), projects, {
-      projectId: filter.projectId,
-      status: filter.status,
-      from: c.req.query("from") || "",
-      to: c.req.query("to") || "",
-    }, result.total),
+    tasksPage(
+      session.email,
+      result.items,
+      nameMap(projects),
+      projects,
+      {
+        projectId: filter.projectId,
+        status: filter.status,
+        from: c.req.query("from") || "",
+        to: c.req.query("to") || "",
+        offset: filter.offset,
+        limit: filter.limit,
+      },
+      result.total,
+      settingsFlash(c.req.query("ok"), c.req.query("err")),
+    ),
   );
 });
 
@@ -316,7 +339,12 @@ app.get("/api/tasks", async (c) => {
 });
 
 app.get("/api/tasks/export", async (c) => {
-  const result = await listTasks(c.env, { ...parseTaskFilter(c), limit: 2000, offset: 0 });
+  const result = await listTasks(c.env, {
+    ...parseTaskFilter(c),
+    limit: TASK_EXPORT_MAX,
+    offset: 0,
+    maxLimit: TASK_EXPORT_MAX,
+  });
   const projects = await listProjects(c.env);
   const csv = tasksToCsv(result.items, nameMap(projects));
   return new Response(csv, {
@@ -327,6 +355,30 @@ app.get("/api/tasks/export", async (c) => {
   });
 });
 
+app.post("/api/tasks/delete", async (c) => {
+  const body = await readBody(c);
+  const ids = parseTaskIds(body.ids ?? body.id);
+  if (!ids.length) {
+    if (wantsHtml(c)) return c.redirect(tasksRedirect(c, body, undefined, "请先勾选要删除的任务"));
+    return c.json({ success: false, error: "ids required" }, 400);
+  }
+  if (ids.length > TASK_DELETE_MAX) {
+    if (wantsHtml(c)) return c.redirect(tasksRedirect(c, body, undefined, `一次最多删除 ${TASK_DELETE_MAX} 条`));
+    return c.json({ success: false, error: `at most ${TASK_DELETE_MAX} ids` }, 400);
+  }
+  const deleted = await deleteTasks(c.env, ids);
+  if (wantsHtml(c)) return c.redirect(tasksRedirect(c, body, `已删除 ${deleted} 条任务`));
+  return c.json({ success: true, deleted });
+});
+
+app.post("/api/tasks/delete-filtered", async (c) => {
+  const body = await readBody(c);
+  const filter = parseTaskFilter(c, body);
+  const deleted = await deleteTasksMatching(c.env, filter);
+  if (wantsHtml(c)) return c.redirect(tasksRedirect(c, body, `已删除筛选结果 ${deleted} 条`, undefined, { dropOffset: true }));
+  return c.json({ success: true, deleted });
+});
+
 app.get("/api/tasks/:id", async (c) => {
   const id = c.req.param("id");
   if (!assertTaskId(id)) return fail(c, "invalid id", 400);
@@ -334,6 +386,9 @@ app.get("/api/tasks/:id", async (c) => {
   if (!task) return fail(c, "not found", 404);
   return c.json({ success: true, item: task });
 });
+
+app.post("/api/tasks/:id", deleteTaskHandler);
+app.delete("/api/tasks/:id", deleteTaskHandler);
 
 app.notFound((c) => {
   if (c.req.path.startsWith("/api/")) return c.json({ success: false, error: "not found" }, 404);
@@ -383,22 +438,63 @@ async function deleteProjectHandler(c: import("hono").Context<App>) {
   return c.json({ success: true });
 }
 
-function parseTaskFilter(c: import("hono").Context<App>) {
-  const projectId = c.req.query("project_id") || undefined;
-  const status = c.req.query("status") as SendStatus | undefined;
-  const from = parseIsoDate(c.req.query("from") || undefined) || undefined;
-  let to = parseIsoDate(c.req.query("to") || undefined) || undefined;
-  if (to && (c.req.query("to") || "").length === 10) {
+async function deleteTaskHandler(c: import("hono").Context<App>) {
+  const id = c.req.param("id");
+  const body = c.req.method === "GET" ? {} : await readBody(c);
+  if (!assertTaskId(id)) {
+    if (wantsHtml(c)) return c.redirect(tasksRedirect(c, body, undefined, "任务 ID 无效"));
+    return fail(c, "invalid id", 400);
+  }
+  const ok = await deleteTask(c.env, Number(id));
+  if (!ok) {
+    if (wantsHtml(c)) return c.redirect(tasksRedirect(c, body, undefined, "任务不存在或已删除"));
+    return fail(c, "not found", 404);
+  }
+  if (wantsHtml(c)) return c.redirect(tasksRedirect(c, body, "已删除 1 条任务"));
+  return c.json({ success: true, deleted: 1 });
+}
+
+function parseTaskFilter(c: import("hono").Context<App>, body?: Record<string, unknown>) {
+  const pick = (name: string) => str(body?.[name]) || c.req.query(name) || "";
+  const projectId = pick("project_id") || undefined;
+  const status = (pick("status") || undefined) as SendStatus | undefined;
+  const fromRaw = pick("from") || undefined;
+  const toRaw = pick("to") || undefined;
+  const from = parseIsoDate(fromRaw) || undefined;
+  let to = parseIsoDate(toRaw) || undefined;
+  if (to && (toRaw || "").length === 10) {
     to = new Date(Date.parse(to) + 24 * 60 * 60 * 1000 - 1).toISOString();
   }
+  const rawLimit = Number(pick("limit") || TASK_PAGE_SIZE);
+  const rawOffset = Number(pick("offset") || 0);
   return {
     projectId: projectId && assertProjectId(projectId) ? projectId : undefined,
     status: status && ["pending", "sent", "partial", "failed"].includes(status) ? status : undefined,
     from,
     to,
-    limit: Number(c.req.query("limit") || 50),
-    offset: Number(c.req.query("offset") || 0),
+    limit: Number.isFinite(rawLimit) ? rawLimit : TASK_PAGE_SIZE,
+    offset: Number.isFinite(rawOffset) ? Math.max(Math.floor(rawOffset), 0) : 0,
   };
+}
+
+function tasksRedirect(
+  c: import("hono").Context<App>,
+  body: Record<string, unknown> | undefined,
+  ok?: string,
+  err?: string,
+  opts?: { dropOffset?: boolean },
+): string {
+  const qs = new URLSearchParams();
+  const pick = (name: string) => str(body?.[name]) || c.req.query(name) || "";
+  for (const key of ["project_id", "status", "from", "to", "offset"]) {
+    if (opts?.dropOffset && key === "offset") continue;
+    const value = pick(key);
+    if (value) qs.set(key, value);
+  }
+  if (ok) qs.set("ok", ok);
+  if (err) qs.set("err", err);
+  const s = qs.toString();
+  return s ? `/tasks?${s}` : "/tasks";
 }
 
 function nameMap(projects: { id: string; name: string }[]): Record<string, string> {
@@ -430,7 +526,7 @@ async function readBody(c: import("hono").Context<App>): Promise<Record<string, 
     }
   }
   try {
-    const form = await c.req.parseBody();
+    const form = await c.req.parseBody({ all: true });
     return form as Record<string, unknown>;
   } catch {
     return {};
