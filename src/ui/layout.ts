@@ -37,7 +37,7 @@ export function layout(opts: {
     ${opts.flash ? `<div class="flash">${esc(opts.flash)}</div>` : ""}
     ${opts.body}
   </main>
-  ${opts.email ? copyScript : ""}
+  ${opts.email ? copyScript + taskListScript : ""}
 </body>
 </html>`;
 }
@@ -68,6 +68,44 @@ document.querySelectorAll("[data-copy]").forEach((btn) => {
     setTimeout(() => { btn.textContent = label; }, 1600);
   });
 });
+</script>`;
+
+const taskListScript = `<script>
+function confirmTaskBulk() {
+  const n = document.querySelectorAll('input[name="ids"]:checked').length;
+  if (!n) {
+    alert("请先勾选要删除的任务");
+    return false;
+  }
+  return confirm("确定删除选中的 " + n + " 条任务？删除后不可恢复。");
+}
+(function () {
+  const all = document.getElementById("task-select-all");
+  const countEl = document.getElementById("task-selected-count");
+  if (!all && !countEl) return;
+  const boxes = function () { return Array.from(document.querySelectorAll('input[name="ids"]')); };
+  const sync = function () {
+    const list = boxes();
+    const n = list.filter(function (b) { return b.checked; }).length;
+    if (countEl) countEl.textContent = String(n);
+    if (all && list.length) {
+      all.checked = n === list.length;
+      all.indeterminate = n > 0 && n < list.length;
+    }
+  };
+  if (all) {
+    all.addEventListener("change", function () {
+      const on = all.checked;
+      boxes().forEach(function (b) { b.checked = on; });
+      sync();
+    });
+  }
+  document.addEventListener("change", function (e) {
+    const t = e.target;
+    if (t && t.getAttribute && t.getAttribute("name") === "ids") sync();
+  });
+  sync();
+})();
 </script>`;
 
 function navLink(href: string, label: string, active?: string): string {
@@ -153,7 +191,18 @@ td { padding: 7px 6px; border-bottom: 1px solid #1d2540; vertical-align: top; }
 .empty { color: var(--muted); padding: 18px 8px; text-align: center; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
 .keybox { background: var(--bg); border: 1px dashed var(--accent); padding: 6px 8px; border-radius: 8px; word-break: break-all; font-size: 12px; }
-.filters { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 10px; }
+.filters { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 10px; align-items: end; }
+.filter-actions { display: flex; gap: 8px; align-items: center; }
+.task-toolbar { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.task-toolbar-form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0; }
+.task-toolbar .count { color: var(--muted); font-size: 12px; }
+.task-toolbar .count b { color: var(--text); }
+.chkcol { width: 32px; }
+.chkcol input { width: auto; margin: 0; }
+td.actions { width: 64px; white-space: nowrap; }
+button.small, .btn.small { padding: 4px 8px; font-size: 12px; }
+.btn.disabled, button:disabled { opacity: .45; pointer-events: none; }
+.pager { display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:10px; color: var(--muted); font-size: 12px; }
 .copyrow { display:flex; gap:6px; align-items:stretch; }
 .copyrow .keybox { flex:1; margin:0; min-width:0; }
 .copyrow button { flex-shrink:0; align-self:center; }
@@ -167,7 +216,8 @@ td { padding: 7px 6px; border-bottom: 1px solid #1d2540; vertical-align: top; }
 .badflash { background:#3a1020; border:1px solid #6b2a3d; color:#ff8aa8; padding:7px 10px; border-radius:8px; margin-bottom:10px; }
 .page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:10px; }
 .page-head .back { margin:0 0 4px; font-size:12px; }
-.statline { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; font-size:13px; color:var(--muted); }
+.statline { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; font-size:13px; color:var(--muted); }
+.statline form { margin: 0; }
 .statline b { color:var(--text); font-size:16px; font-weight:650; }
 .cred-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
 .detail-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr); gap:10px; align-items:start; }
@@ -186,6 +236,7 @@ td { padding: 7px 6px; border-bottom: 1px solid #1d2540; vertical-align: top; }
   .side nav { flex-direction: row; flex-wrap: wrap; }
   .who { margin-top: 0; margin-left: auto; }
   .stats, .filters { grid-template-columns: 1fr 1fr; }
+  .filter-actions { grid-column: 1 / -1; }
   main { padding: 12px; }
   .page-head { flex-direction: column; gap: 8px; }
 }

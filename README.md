@@ -13,7 +13,7 @@
 - 每个项目独立 Base64 Key，HMAC-SHA256 后写入 KV（`project_key:{hash}`）
 - `POST /api/notify` 结构化上报，支持 `level=partial` 和多账号混合状态
 - 请求通道与项目开关取交集后再发送
-- 任务写入 D1，后台可按项目、发送状态、时间筛选，并下载 CSV
+- 任务写入 D1，后台可按项目、发送状态、时间筛选；支持勾选批量删除、单条删除，并下载 CSV
 - IP 60 次/分钟、项目 120 次/分钟限流；正文不超过 5000 字
 - 邮件和 Telegram 失败自动重试 3 次
 - 后台「设置」页配置整站 SMTP / Telegram，改完立即生效
@@ -98,7 +98,9 @@ Workers 没有完整 Node 运行时，邮件通道用 `cloudflare:sockets` 直�
 | `/api/projects/:id` | PUT / DELETE | 编辑 / 软删除 |
 | `/api/projects/:id/regenerate` | POST | 轮换 Key |
 | `/api/tasks` | GET | 任务列表 |
-| `/api/tasks/:id` | GET | 任务详情 |
+| `/api/tasks/delete` | POST | 按 ID 批量删除（表单 `ids` 或 JSON `{ ids: number[] }`） |
+| `/api/tasks/delete-filtered` | POST | 删除当前筛选条件下的全部任务 |
+| `/api/tasks/:id` | GET / DELETE | 任务详情 / 删除一条 |
 | `/api/tasks/export` | GET | 发送日志 CSV |
 | `/api/settings` | GET / PUT | 通道设置（密码只回显掩码） |
 | `/api/settings/test-email` | POST | 试发邮件 |

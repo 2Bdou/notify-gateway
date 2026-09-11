@@ -201,8 +201,9 @@ export function tasksPage(
   items: TaskRecord[],
   names: Record<string, string>,
   projects: Project[],
-  query: { projectId?: string; status?: string; from?: string; to?: string },
+  query: { projectId?: string; status?: string; from?: string; to?: string; offset?: number; limit?: number },
   total: number,
+  flash?: { kind: "ok" | "err"; text: string },
 ): string {
   const options = projects
     .map((p) => `<option value="${attr(p.id)}" ${query.projectId === p.id ? "selected" : ""}>${esc(p.name)}</option>`)
@@ -210,11 +211,17 @@ export function tasksPage(
   const statuses = ["", "pending", "sent", "partial", "failed"]
     .map((s) => `<option value="${s}" ${query.status === s ? "selected" : ""}>${s || "全部状态"}</option>`)
     .join("");
-  const qs = new URLSearchParams();
-  if (query.projectId) qs.set("project_id", query.projectId);
-  if (query.status) qs.set("status", query.status);
-  if (query.from) qs.set("from", query.from);
-  if (query.to) qs.set("to", query.to);
+  const limit = query.limit && query.limit > 0 ? query.limit : 50;
+  const offset = query.offset && query.offset > 0 ? query.offset : 0;
+  const qs = taskQueryParams(query);
+  const hasFilter = Boolean(query.projectId || query.status || query.from || query.to);
+  const banner = flash
+    ? `<div class="${flash.kind === "ok" ? "okflash" : "badflash"}">${esc(flash.text)}</div>`
+    : "";
+  const from = offset + 1;
+  const to = Math.min(offset + items.length, total);
+  const range = total ? `${from}-${to}` : "0";
+  const filterNote = hasFilter ? "当前筛选" : "全部任务";
 
   return layout({
     title: "任务",
@@ -222,17 +229,21 @@ export function tasksPage(
     active: "/tasks",
     body: `
       <div class="row" style="justify-content:space-between">
-        <div><h1>任务</h1><p class="sub">共 ${total} 条。可按项目、发送状态和时间筛选。</p></div>
+        <div><h1>任务</h1><p class="sub">${esc(filterNote)}，共 ${total} 条。勾选后可批量删除，也可单条删除。</p></div>
         <a class="btn ghost" href="/api/tasks/export?${qs.toString()}">下载 CSV</a>
       </div>
+      ${banner}
       <form class="filters" method="get" action="/tasks">
         <div><label>项目</label><select name="project_id"><option value="">全部项目</option>${options}</select></div>
         <div><label>状态</label><select name="status">${statuses}</select></div>
         <div><label>从</label><input type="date" name="from" value="${attr(query.from || "")}"></div>
         <div><label>到</label><input type="date" name="to" value="${attr(query.to || "")}"></div>
-        <div style="align-self:end"><button type="submit">筛选</button></div>
+        <div class="filter-actions">
+          <button type="submit">筛选</button>
+          <a class="btn ghost" href="/tasks">重置</a>
+        </div>
       </form>
-      <div class="card">${taskTable(items, names)}</div>`,
+      <div class="card">${taskTable(items, names, { selectable: true, query, total, limit, offset, range, hasFilter })}</div>`,
   });
 }
 
@@ -268,6 +279,9 @@ export function taskDetailPage(
           <span>发送 <b>${esc(task.sendStatus)}</b></span>
           <span>邮件 <b>${esc(task.emailStatus || "—")}</b></span>
           <span>Telegram <b>${esc(task.telegramStatus || "—")}</b></span>
+          <form method="post" action="/api/tasks/${task.id}" onsubmit="return confirm('确定删除这条任务？删除后不可恢复。')">
+            <button class="danger" type="submit">删除任务</button>
+          </form>
         </div>
       </div>
       <div class="card" style="margin-bottom:10px">
@@ -372,9 +386,116 @@ export function settingsPage(
   });
 }
 
-function taskTable(items: TaskRecord[], names: Record<string, string>): string {
-  if (!items.length) return `<div class="empty">没有匹配的任务。</div>`;
+function taskQueryParams(query: {
+  projectId?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  offset?: number;
+}): URLSearchParams {
+  const qs = new URLSearchParams();
+  if (query.projectId) qs.set("project_id", query.projectId);
+  if (query.status) qs.set("status", query.status);
+  if (query.from) qs.set("from", query.from);
+  if (query.to) qs.set("to", query.to);
+  if (query.offset && query.offset > 0) qs.set("offset", String(query.offset));
+  return qs;
+}
+
+function taskFilterHiddens(query: { projectId?: string; status?: string; from?: string; to?: string; offset?: number }): string {
+  const pairs: Array<[string, string | undefined]> = [
+    ["project_id", query.projectId],
+    ["status", query.status],
+    ["from", query.from],
+    ["to", query.to],
+    ["offset", query.offset && query.offset > 0 ? String(query.offset) : undefined],
+  ];
+  return pairs
+    .filter(([, value]) => value)
+    .map(([name, value]) => `<input type="hidden" name="${name}" value="${attr(value)}">`)
+    .join("");
+}
+
+function taskTable(
+  items: TaskRecord[],
+  names: Record<string, string>,
+  opts?: {
+    selectable?: boolean;
+    query?: { projectId?: string; status?: string; from?: string; to?: string; offset?: number };
+    total?: number;
+    limit?: number;
+    offset?: number;
+    range?: string;
+    hasFilter?: boolean;
+  },
+): string {
+  if (!opts?.selectable) {
+    if (!items.length) return `<div class="empty">没有匹配的任务。</div>`;
+    return `<table><thead><tr><th>标题</th><th>项目</th><th>级别</th><th>发送</th><th>账号</th><th>时间</th></tr></thead><tbody>${taskRows(items, names)}</tbody></table>`;
+  }
+
+  const query = opts.query || {};
+  const hiddens = taskFilterHiddens(query);
+  const total = opts.total || 0;
+  const wipeLabel = opts.hasFilter ? `删除筛选结果（${total}）` : `删除全部任务（${total}）`;
+  const wipeConfirm = opts.hasFilter
+    ? `确定删除当前筛选条件下的全部 ${total} 条任务？删除后不可恢复。`
+    : `当前没有筛选条件，确定删除全部 ${total} 条任务？删除后不可恢复。`;
+  const toolbar = `
+    <div class="task-toolbar">
+      <form id="task-bulk" class="task-toolbar-form" method="post" action="/api/tasks/delete" onsubmit="return confirmTaskBulk()">
+        ${hiddens}
+        <span class="count">已选 <b id="task-selected-count">0</b> / ${items.length} 条</span>
+        <button class="danger" type="submit">删除所选</button>
+      </form>
+      <form class="task-toolbar-form" method="post" action="/api/tasks/delete-filtered" onsubmit="return confirm('${wipeConfirm}')">
+        ${taskFilterHiddens({ ...query, offset: undefined })}
+        <button class="ghost" type="submit" ${total ? "" : "disabled"}>${esc(wipeLabel)}</button>
+      </form>
+    </div>`;
+
+  const pager = taskPager(query, total, opts.limit || 50, opts.offset || 0, opts.range || "0");
+  const rowForms = items
+    .map(
+      (t) => `<form id="del-task-${t.id}" method="post" action="/api/tasks/${t.id}" onsubmit="return confirm('确定删除这条任务？删除后不可恢复。')">${hiddens}</form>`,
+    )
+    .join("");
+
+  if (!items.length) {
+    return `${toolbar}<div class="empty">没有匹配的任务。</div>${pager}`;
+  }
+
   const rows = items
+    .map(
+      (t) => `<tr>
+        <td class="chkcol"><input form="task-bulk" type="checkbox" name="ids" value="${t.id}"></td>
+        <td><a href="/tasks/${t.id}">${esc(t.title)}</a></td>
+        <td>${esc(names[t.projectId] || t.projectId)}</td>
+        <td><span class="badge ${t.level}">${esc(t.level)}</span></td>
+        <td><span class="badge ${t.sendStatus}">${esc(t.sendStatus)}</span></td>
+        <td>${esc(t.data ? `${t.data.success}/${t.data.total}` : "—")}</td>
+        <td>${esc(fmtTime(t.createdAt))}</td>
+        <td class="actions"><button class="danger small" type="submit" form="del-task-${t.id}">删除</button></td>
+      </tr>`,
+    )
+    .join("");
+
+  return `${toolbar}
+    <table>
+      <thead>
+        <tr>
+          <th class="chkcol"><input id="task-select-all" type="checkbox" aria-label="全选本页"></th>
+          <th>标题</th><th>项目</th><th>级别</th><th>发送</th><th>账号</th><th>时间</th><th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${pager}
+    ${rowForms}`;
+}
+
+function taskRows(items: TaskRecord[], names: Record<string, string>): string {
+  return items
     .map(
       (t) => `<tr>
         <td><a href="/tasks/${t.id}">${esc(t.title)}</a></td>
@@ -386,7 +507,29 @@ function taskTable(items: TaskRecord[], names: Record<string, string>): string {
       </tr>`,
     )
     .join("");
-  return `<table><thead><tr><th>标题</th><th>项目</th><th>级别</th><th>发送</th><th>账号</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function taskPager(
+  query: { projectId?: string; status?: string; from?: string; to?: string },
+  total: number,
+  limit: number,
+  offset: number,
+  range: string,
+): string {
+  if (total <= limit && offset === 0) return "";
+  const prev = Math.max(offset - limit, 0);
+  const next = offset + limit;
+  const prevQs = taskQueryParams({ ...query, offset: prev || undefined });
+  const nextQs = taskQueryParams({ ...query, offset: next });
+  const prevLink =
+    offset > 0
+      ? `<a class="btn ghost small" href="/tasks?${prevQs.toString()}">上一页</a>`
+      : `<span class="btn ghost small disabled">上一页</span>`;
+  const nextLink =
+    next < total
+      ? `<a class="btn ghost small" href="/tasks?${nextQs.toString()}">下一页</a>`
+      : `<span class="btn ghost small disabled">下一页</span>`;
+  return `<div class="pager">${prevLink}<span>第 ${range} 条，共 ${total} 条</span>${nextLink}</div>`;
 }
 
 function stat(label: string, value: string | number): string {
