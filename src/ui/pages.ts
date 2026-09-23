@@ -11,7 +11,7 @@ export function loginPage(opts?: { error?: string; next?: string }): string {
       <div class="card">
         <h1>通知中转站</h1>
         <p class="sub">用管理员邮箱登录，管理项目密钥与发送记录。</p>
-        ${opts?.error ? `<div class="flash">${esc(opts.error)}</div>` : ""}
+        ${opts?.error ? `<div class="flash" role="alert">${esc(opts.error)}</div>` : ""}
         <form method="post" action="/api/auth/login">
           <input type="hidden" name="next" value="${attr(opts?.next || "/dashboard")}">
           <div class="field"><label>邮箱</label><input name="email" type="email" required autocomplete="username"></div>
@@ -29,12 +29,25 @@ export function setupPage(opts?: { error?: string }): string {
       <div class="card">
         <h1>创建管理员</h1>
         <p class="sub">首次部署需要一个邮箱账号。密码至少 8 位，哈希后写入 KV 与 D1。</p>
-        ${opts?.error ? `<div class="flash">${esc(opts.error)}</div>` : ""}
+        ${opts?.error ? `<div class="flash" role="alert">${esc(opts.error)}</div>` : ""}
         <form method="post" action="/api/setup">
-          <div class="field"><label>管理员邮箱</label><input name="email" type="email" required></div>
-          <div class="field"><label>密码</label><input name="password" type="password" required minlength="8"></div>
+          <div class="field"><label>管理员邮箱</label><input name="email" type="email" required autocomplete="username"></div>
+          <div class="field"><label>密码</label><input name="password" type="password" required minlength="8" autocomplete="new-password"></div>
           <button type="submit">创建并进入后台</button>
         </form>
+      </div>`,
+  });
+}
+
+export function notFoundPage(email?: string): string {
+  return layout({
+    title: "找不到页面",
+    email,
+    body: `
+      <div class="card">
+        <h1>找不到这个页面</h1>
+        <p class="sub">地址可能写错了，或者页面已经移走。</p>
+        <a class="btn" href="/">回到首页</a>
       </div>`,
   });
 }
@@ -50,16 +63,20 @@ export function dashboardPage(
     email,
     active: "/dashboard",
     body: `
-      <h1>总览</h1>
-      <p class="sub">续期与备份任务的统一上报入口。每个项目一把独立 Key。</p>
-      <div class="stats">
-        ${stat("项目", stats.projects)}
+      <div class="section-head flush">
+        <div>
+          <h1>总览</h1>
+          <p class="sub">续期与备份任务的统一上报入口。每个项目一把独立 Key。</p>
+        </div>
+      </div>
+      <div class="meter">
+        ${stat("项目", stats.projects, true)}
         ${stat("任务", stats.total)}
         ${stat("已送达", stats.sent)}
         ${stat("部分失败", stats.partial + stats.failed)}
       </div>
       <div class="card">
-        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <div class="section-head flush">
           <strong>最近任务</strong>
           <a href="/tasks">查看全部</a>
         </div>
@@ -74,7 +91,7 @@ export function projectsPage(email: string, projects: Project[], flash?: string)
       (p) => `<tr>
         <td><a href="/projects/${attr(p.id)}">${esc(p.name)}</a></td>
         <td class="mono">${esc(maskKey(p.apiKey))}</td>
-        <td>${p.channels.map((c) => `<span class="badge pending">${esc(c)}</span>`).join(" ")}</td>
+        <td>${p.channels.map((c) => `<span class="badge tag">${esc(c)}</span>`).join(" ")}</td>
         <td>${p.enabled ? '<span class="badge success">开启</span>' : '<span class="badge failed">关闭</span>'}</td>
         <td>${esc(fmtTime(p.createdAt))}</td>
       </tr>`,
@@ -88,12 +105,12 @@ export function projectsPage(email: string, projects: Project[], flash?: string)
     flash,
     body: `
       <div class="page-head">
-        <div><h1>项目</h1><p class="sub">新建立刻生成 Key。详情页左右分栏，凭证和编辑并排。</p></div>
+        <div><h1>项目</h1><p class="sub">新建后立刻生成 Key。到详情页复制接入地址和 Token。</p></div>
       </div>
-      <div class="card" style="margin-bottom:10px">
+      <div class="card mb">
         <form method="post" action="/api/projects">
-          <div class="row" style="align-items:end">
-            <div class="field" style="flex:1;margin:0"><label>项目名称</label><input name="name" required placeholder="例如 puratya-renew"></div>
+          <div class="create-bar">
+            <div class="field"><label>项目名称</label><input name="name" required placeholder="例如 puratya-renew"></div>
             <label class="chk"><input type="checkbox" name="channel_email" value="1" checked> 邮件</label>
             <label class="chk"><input type="checkbox" name="channel_telegram" value="1" checked> Telegram</label>
             <button type="submit">新建项目</button>
@@ -134,7 +151,7 @@ export function projectDetailPage(
     body: `
       <div class="page-head">
         <div>
-          <p class="back"><a href="/projects">← 项目列表</a></p>
+          <p class="back"><a href="/projects">返回项目</a></p>
           <h1>${esc(project.name)}</h1>
           <p class="sub">${esc(project.id)} · ${project.enabled ? "开启" : "关闭"} · ${esc(maskKey(project.apiKey))}</p>
         </div>
@@ -228,7 +245,7 @@ export function tasksPage(
     email,
     active: "/tasks",
     body: `
-      <div class="row" style="justify-content:space-between">
+      <div class="section-head">
         <div><h1>任务</h1><p class="sub">${esc(filterNote)}，共 ${total} 条。勾选后可批量删除，也可单条删除。</p></div>
         <a class="btn ghost" href="/api/tasks/export?${qs.toString()}">下载 CSV</a>
       </div>
@@ -270,24 +287,24 @@ export function taskDetailPage(
     body: `
       <div class="page-head">
         <div>
-          <p class="back"><a href="/tasks">← 任务列表</a></p>
+          <p class="back"><a href="/tasks">返回任务</a></p>
           <h1>${esc(task.title)}</h1>
           <p class="sub">${esc(projectName)} · ${esc(task.source)} · ${esc(fmtTime(task.createdAt))}</p>
         </div>
         <div class="statline">
           <span>级别 <b>${esc(task.level)}</b></span>
           <span>发送 <b>${esc(task.sendStatus)}</b></span>
-          <span>邮件 <b>${esc(task.emailStatus || "—")}</b></span>
-          <span>Telegram <b>${esc(task.telegramStatus || "—")}</b></span>
+          <span>邮件 <b>${esc(task.emailStatus || "无")}</b></span>
+          <span>Telegram <b>${esc(task.telegramStatus || "无")}</b></span>
           <form method="post" action="/api/tasks/${task.id}" onsubmit="return confirm('确定删除这条任务？删除后不可恢复。')">
             <button class="danger" type="submit">删除任务</button>
           </form>
         </div>
       </div>
-      <div class="card" style="margin-bottom:10px">
+      <div class="card mb">
         <p>${esc(task.content)}</p>
-        ${task.error ? `<div class="flash">${esc(task.error)}</div>` : ""}
-        <div class="mono">email id: ${esc(task.emailMessageId || "—")}<br>telegram id: ${esc(task.telegramMessageId || "—")}</div>
+        ${task.error ? `<div class="flash" role="alert">${esc(task.error)}</div>` : ""}
+        <div class="mono">email id: ${esc(task.emailMessageId || "无")}<br>telegram id: ${esc(task.telegramMessageId || "无")}</div>
       </div>
       <div class="card">
         <strong>账号明细</strong>
@@ -318,7 +335,7 @@ export function settingsPage(
       <h1>系统设置</h1>
       <p class="sub">整站一份 SMTP 和 Telegram。项目页只控制通道开关。JWT / HMAC 仍在 Cloudflare Secret。</p>
       ${banner}
-      <div class="card" style="margin-bottom:10px">
+      <div class="card mb">
         <form method="post" action="/api/settings">
           <div class="inline-host">
             <div class="field">
@@ -338,7 +355,7 @@ export function settingsPage(
             }
             <button type="submit">保存域名</button>
           </div>
-          <p class="hint" style="margin:8px 0 0">只填域名，例如 <span class="mono">notify.example.com</span>，会补成 <span class="mono">https://域名/api/notify</span>。留空则用当前访问地址。</p>
+          <p class="hint after">只填域名，例如 <span class="mono">notify.example.com</span>，会补成 <span class="mono">https://域名/api/notify</span>。留空则用当前访问地址。</p>
         </form>
       </div>
       <div class="settings-grid">
@@ -360,7 +377,7 @@ export function settingsPage(
             </div>
             <div class="field"><label>From</label><input name="smtp_from" value="${attr(settings.smtp.from)}" placeholder="Notify Gateway <notify@example.com>"></div>
             <div class="field"><label>To（固定收件人）</label><input name="smtp_to" type="email" value="${attr(settings.smtp.to)}" placeholder="you@example.com"></div>
-            <label class="chk" style="margin-bottom:14px"><input type="checkbox" name="clear_smtp_password" value="1"> 清除已保存的密码</label>
+            <label class="chk gap"><input type="checkbox" name="clear_smtp_password" value="1"> 清除已保存的密码</label>
             <div class="row">
               <button type="submit">保存邮件设置</button>
               <button class="ghost" type="submit" formaction="/api/settings/test-email">发送测试邮件</button>
@@ -375,7 +392,7 @@ export function settingsPage(
               <input name="telegram_bot_token" type="password" autocomplete="new-password" placeholder="${settings.telegram.tokenSet ? "留空则不修改" : "123456:AA..."}">
             </div>
             <div class="field"><label>Chat ID</label><input name="telegram_chat_id" value="${attr(settings.telegram.chatId)}" placeholder="123456789"></div>
-            <label class="chk" style="margin-bottom:14px"><input type="checkbox" name="clear_telegram_token" value="1"> 清除已保存的 Token</label>
+            <label class="chk gap"><input type="checkbox" name="clear_telegram_token" value="1"> 清除已保存的 Token</label>
             <div class="row">
               <button type="submit">保存 Telegram 设置</button>
               <button class="ghost" type="submit" formaction="/api/settings/test-telegram">发送测试消息</button>
@@ -447,6 +464,7 @@ function taskTable(
         ${hiddens}
         <span class="count">已选 <b id="task-selected-count">0</b> / ${items.length} 条</span>
         <button class="danger" type="submit">删除所选</button>
+        <p id="task-bulk-note" class="form-note" role="status"></p>
       </form>
       <form class="task-toolbar-form" method="post" action="/api/tasks/delete-filtered" onsubmit="return confirm('${wipeConfirm}')">
         ${taskFilterHiddens({ ...query, offset: undefined })}
@@ -473,7 +491,7 @@ function taskTable(
         <td>${esc(names[t.projectId] || t.projectId)}</td>
         <td><span class="badge ${t.level}">${esc(t.level)}</span></td>
         <td><span class="badge ${t.sendStatus}">${esc(t.sendStatus)}</span></td>
-        <td>${esc(t.data ? `${t.data.success}/${t.data.total}` : "—")}</td>
+        <td>${esc(t.data ? `${t.data.success}/${t.data.total}` : "无")}</td>
         <td>${esc(fmtTime(t.createdAt))}</td>
         <td class="actions"><button class="danger small" type="submit" form="del-task-${t.id}">删除</button></td>
       </tr>`,
@@ -502,7 +520,7 @@ function taskRows(items: TaskRecord[], names: Record<string, string>): string {
         <td>${esc(names[t.projectId] || t.projectId)}</td>
         <td><span class="badge ${t.level}">${esc(t.level)}</span></td>
         <td><span class="badge ${t.sendStatus}">${esc(t.sendStatus)}</span></td>
-        <td>${esc(t.data ? `${t.data.success}/${t.data.total}` : "—")}</td>
+        <td>${esc(t.data ? `${t.data.success}/${t.data.total}` : "无")}</td>
         <td>${esc(fmtTime(t.createdAt))}</td>
       </tr>`,
     )
@@ -532,8 +550,8 @@ function taskPager(
   return `<div class="pager">${prevLink}<span>第 ${range} 条，共 ${total} 条</span>${nextLink}</div>`;
 }
 
-function stat(label: string, value: string | number): string {
-  return `<div class="card stat"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+function stat(label: string, value: string | number, lead = false): string {
+  return `<div class="meter-item${lead ? " meter-lead" : ""}"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
 }
 
 function fmtTime(value: string): string {

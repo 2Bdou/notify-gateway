@@ -48,6 +48,7 @@ import {
 import {
   dashboardPage,
   loginPage,
+  notFoundPage,
   projectDetailPage,
   projectsPage,
   settingsPage,
@@ -173,9 +174,9 @@ app.get("/projects", async (c) => {
 
 app.get("/projects/:id", async (c) => {
   const id = c.req.param("id");
-  if (!assertProjectId(id)) return c.text("Not found", 404);
+  if (!assertProjectId(id)) return c.html(notFoundPage((await readSession(c))?.email), 404);
   const project = await getProject(c.env, id);
-  if (!project) return c.text("Not found", 404);
+  if (!project) return c.html(notFoundPage((await readSession(c))?.email), 404);
   const session = (await readSession(c))!;
   const stats = await projectStats(c.env, id);
   return c.html(
@@ -212,9 +213,9 @@ app.get("/tasks", async (c) => {
 
 app.get("/tasks/:id", async (c) => {
   const id = c.req.param("id");
-  if (!assertTaskId(id)) return c.text("Not found", 404);
+  if (!assertTaskId(id)) return c.html(notFoundPage((await readSession(c))?.email), 404);
   const task = await getTask(c.env, Number(id));
-  if (!task) return c.text("Not found", 404);
+  if (!task) return c.html(notFoundPage((await readSession(c))?.email), 404);
   const project = await getProject(c.env, task.projectId, true);
   const session = (await readSession(c))!;
   return c.html(taskDetailPage(session.email, task, project?.name || task.projectId));
@@ -390,9 +391,10 @@ app.get("/api/tasks/:id", async (c) => {
 app.post("/api/tasks/:id", deleteTaskHandler);
 app.delete("/api/tasks/:id", deleteTaskHandler);
 
-app.notFound((c) => {
+app.notFound(async (c) => {
   if (c.req.path.startsWith("/api/")) return c.json({ success: false, error: "not found" }, 404);
-  return c.text("Not found", 404);
+  const session = await readSession(c);
+  return c.html(notFoundPage(session?.email), 404);
 });
 
 export default app;
